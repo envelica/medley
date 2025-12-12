@@ -1,0 +1,13 @@
+[package]
+name = "medley"
+version = "0.1.0-dev.1"
+edition = "2024"
+description = "A medley of high-quality, generic Rust utility modules for a small dependency footprint."
+license = "MIT OR Apache-2.0"
+repository = "https://github.com/envelica/medley"
+readme = "README.md"
+keywords = ["utility", "extension", "generic", "convenience", "helpers"]
+categories = ["data-structures", "development-tools"]
+rust-version = "1.85"
+
+[dependencies]
