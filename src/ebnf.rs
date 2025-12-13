@@ -4,10 +4,10 @@
 //! This file declares and re-exports them for public use.
 
 mod ir;
-mod runtime;
+mod parser;
 
 pub use ir::*;
-pub use runtime::*;
+pub use parser::*;
 
 // Re-export the grammar! macro from medley-macros
 pub use medley_macros::grammar;
