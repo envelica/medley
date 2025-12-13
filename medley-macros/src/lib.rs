@@ -27,7 +27,6 @@ pub fn grammar(input: TokenStream) -> TokenStream {
 #[derive(Debug)]
 struct ParseError {
     message: String,
-    #[allow(dead_code)]
     span: Span,
 }
 
@@ -353,7 +352,6 @@ fn generate_grammar_construction(rules: Vec<RuleAst>) -> TokenStream {
     }
     
     code.push_str("        ],\n");
-    code.push_str("        start: None,\n");
     code.push_str("    }\n");
     code.push_str("}\n");
     
@@ -406,6 +404,21 @@ fn generate_prod(prod: &ProdAst) -> String {
 }
 
 fn generate_error(err: ParseError) -> TokenStream {
+    // Use proc_macro::Literal to attach the span to the error
     let message = err.message;
-    format!("compile_error!({:?})", message).parse().unwrap()
+    let span = err.span;
+    
+    // Create a compile_error! invocation with the proper span
+    let error_msg = proc_macro::Literal::string(&message);
+    let mut error_lit = TokenTree::Literal(error_msg);
+    error_lit.set_span(span);
+    
+    let compile_error = TokenTree::Ident(proc_macro::Ident::new("compile_error", span));
+    let punct_bang = TokenTree::Punct(proc_macro::Punct::new('!', proc_macro::Spacing::Alone));
+    let group = TokenTree::Group(proc_macro::Group::new(
+        Delimiter::Parenthesis,
+        TokenStream::from(error_lit)
+    ));
+    
+    TokenStream::from_iter(vec![compile_error, punct_bang, group])
 }
