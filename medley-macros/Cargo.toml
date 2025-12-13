@@ -1,0 +1,10 @@
+[package]
+name = "medley-macros"
+version = "0.1.0-dev.1"
+edition = "2024"
+rust-version = "1.85"
+
+[lib]
+proc-macro = true
+
+[dependencies]

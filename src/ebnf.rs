@@ -6,3 +6,6 @@
 mod ir;
 
 pub use ir::*;
+
+// Re-export the grammar! macro from medley-macros
+pub use medley_macros::grammar;

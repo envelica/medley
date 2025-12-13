@@ -11,3 +11,4 @@ categories = ["data-structures", "development-tools"]
 rust-version = "1.85"
 
 [dependencies]
+medley-macros = { path = "medley-macros" }
