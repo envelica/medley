@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 use std::io::{BufRead, Cursor};
 
-use crate::ebnf::ir::{CharClass, Grammar, Prod, RepeatQuant, Span, TerminalKind};
+use super::{Span, CharClass, Grammar, Prod, RepeatQuant, TerminalKind};
 
 /// Parse event emitted by the pull parser.
 #[derive(Debug, Clone, PartialEq)]
@@ -89,9 +89,9 @@ impl LineColumnTracker {
 #[derive(Clone, Debug)]
 enum Frame<'a> {
     Seq { items: &'a [Prod], idx: usize },
-    Alt { alts: &'a [Prod], idx: usize, saved_pos: usize },
+    Alt { alts: &'a [Prod], idx: usize, backtrack_pos: usize, event_count_at_start: usize },
     Group { inner: &'a Prod },
-    Repeat { item: &'a Prod, quant: &'a RepeatQuant, count: usize, saved_pos: usize, trying: bool },
+    Repeat { item: &'a Prod, quant: &'a RepeatQuant, count: usize, backtrack_pos: usize, trying: bool },
     Terminal { kind: &'a TerminalKind },
     Class { class: &'a CharClass },
     Ref { name: &'a str, prod: &'a Prod, stage: RefStage },
@@ -117,6 +117,7 @@ pub struct Parser<'a, R: BufRead> {
     events: VecDeque<ParseEvent<'a>>,
     line_tracker: LineColumnTracker,
     finished: bool,
+    branch_failed: bool,  // Track if a branch failed (different from finished for Alt handling)
     reader: Option<R>,
     eof: bool,
 }
@@ -136,6 +137,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
             events: VecDeque::new(),
             line_tracker,
             finished: false,
+            branch_failed: false,
             reader: Some(reader),
             eof: false,
         };
@@ -222,20 +224,53 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 None
             }
 
-            Frame::Alt { alts, idx, saved_pos } => {
+            Frame::Alt { alts, idx, backtrack_pos, event_count_at_start } => {
                 if idx == 0 {
-                    // First time seeing this Alt frame - save current position
+                    // First time seeing this Alt frame - save position and event count, try first branch
                     let current_pos = self.pos;
-                    self.frames.push(Frame::Alt { alts, idx: 1, saved_pos: current_pos });
+                    let current_event_count = self.events.len();
+                    self.branch_failed = false;  // Reset flag for new branch attempt
+                    self.frames.push(Frame::Alt { 
+                        alts, 
+                        idx: 1, 
+                        backtrack_pos: current_pos,
+                        event_count_at_start: current_event_count,
+                    });
                     self.frames.push(Frame::from_prod(&alts[0]));
-                } else if idx < alts.len() {
-                    // Alternative failed, restore position and try next
-                    self.pos = saved_pos;
-                    self.frames.push(Frame::Alt { alts, idx: idx + 1, saved_pos });
-                    self.frames.push(Frame::from_prod(&alts[idx]));
-                } else {
-                    // All alternatives failed
-                    self.fail("no alternative matched");
+                } else if idx > 0 {
+                    // Check if previous branch succeeded
+                    let branch_succeeded = !self.branch_failed;
+                    self.branch_failed = false;  // Reset flag for next iteration
+                    
+                    if branch_succeeded {
+                        // Previous branch succeeded - we're done
+                        // Just pop this frame (don't push anything new)
+                    } else if idx < alts.len() {
+                        // Previous branch failed, try next one
+                        self.pos = backtrack_pos;
+                        self.events.truncate(event_count_at_start);
+                        
+                        self.frames.push(Frame::Alt { 
+                            alts, 
+                            idx: idx + 1, 
+                            backtrack_pos,
+                            event_count_at_start,
+                        });
+                        self.frames.push(Frame::from_prod(&alts[idx]));
+                    } else {
+                        // All alternatives failed - mark as failed
+                        // If parent frame has no way to handle this, they will fail accordingly
+                        self.branch_failed = true;
+                        self.pos = backtrack_pos;
+                        self.events.truncate(event_count_at_start);
+                        
+                        // Check if there's a parent frame that can handle this failure gracefully
+                        // If this is a top-level Alt (no Seq/Repeat/etc parent), then fail
+                        let has_parent_handler = self.frames.iter().any(|f| matches!(f, Frame::Seq { .. } | Frame::Repeat { .. } | Frame::Ref { .. }));
+                        if !has_parent_handler {
+                            self.fail("no alternative matched");
+                        }
+                    }
                 }
                 None
             }
@@ -245,21 +280,24 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 None
             }
 
-            Frame::Repeat { item, quant, count, saved_pos, trying } => {
+            Frame::Repeat { item, quant, count, backtrack_pos, trying } => {
                 if trying {
                     if let Some(max) = quant.max {
                         if count >= max {
-                            // Stop repeating
+                            // Stop repeating, check minimum
+                            if count < quant.min {
+                                self.fail("repeat did not satisfy minimum occurrences");
+                            }
                             return None;
                         }
                     }
-                    self.frames.push(Frame::Repeat { item, quant, count, saved_pos: self.pos, trying: false });
+                    self.frames.push(Frame::Repeat { item, quant, count, backtrack_pos: self.pos, trying: false });
                     self.frames.push(Frame::from_prod(item));
                 } else {
                     // After attempting one repetition
-                    if self.pos > saved_pos {
+                    if self.pos > backtrack_pos {
                         // Made progress; try again
-                        self.frames.push(Frame::Repeat { item, quant, count: count + 1, saved_pos: self.pos, trying: true });
+                        self.frames.push(Frame::Repeat { item, quant, count: count + 1, backtrack_pos: self.pos, trying: true });
                     } else {
                         // No progress; check min bound
                         if count < quant.min {
@@ -345,17 +383,27 @@ impl<'a, R: BufRead> Parser<'a, R> {
         if self.finished {
             return;
         }
-        self.finished = true;
-        // Find the most recent active rule from the frame stack
-        let ctx = self.frames.iter().rev().find_map(|f| match f {
-            Frame::Ref { name, stage, .. } if *stage != RefStage::End => Some(name.to_string()),
-            _ => None,
-        }).unwrap_or_else(|| self.grammar.rules.first().map(|r| r.name.clone()).unwrap_or_default());
-        let msg = msg.into();
-        self.events.push_back(ParseEvent::Error(
-            ParseError::new(format!("failed to match: {}", msg), self.window_start + self.pos)
-                .with_rule_context(ctx),
-        ));
+        
+        // Check if there's an Alt frame that can handle this failure
+        let has_alt_handler = self.frames.iter().any(|f| matches!(f, Frame::Alt { .. }));
+        
+        if has_alt_handler {
+            // Branch failed - set flag for Alt frame to detect, but don't stop parser
+            self.branch_failed = true;
+        } else {
+            // No Alt handler - this is a fatal error
+            self.finished = true;
+            // Find the most recent active rule from the frame stack
+            let ctx = self.frames.iter().rev().find_map(|f| match f {
+                Frame::Ref { name, stage, .. } if *stage != RefStage::End => Some(name.to_string()),
+                _ => None,
+            }).unwrap_or_else(|| self.grammar.rules.first().map(|r| r.name.clone()).unwrap_or_default());
+            let msg = msg.into();
+            self.events.push_back(ParseEvent::Error(
+                ParseError::new(format!("failed to match: {}", msg), self.window_start + self.pos)
+                    .with_rule_context(ctx),
+            ));
+        }
     }
 
     fn peek_char(&self) -> Option<(char, usize)> {
@@ -376,8 +424,8 @@ impl<'a, R: BufRead> Parser<'a, R> {
             // Find minimum position we need to keep for backtracking
             let min_pos = self.frames.iter()
                 .filter_map(|f| match f {
-                    Frame::Alt { saved_pos, .. } => Some(*saved_pos),
-                    Frame::Repeat { saved_pos, .. } => Some(*saved_pos),
+                    Frame::Alt { backtrack_pos, .. } => Some(*backtrack_pos),
+                    Frame::Repeat { backtrack_pos, .. } => Some(*backtrack_pos),
                     _ => None,
                 })
                 .min()
@@ -392,8 +440,8 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 // Adjust frame positions
                 for frame in &mut self.frames {
                     match frame {
-                        Frame::Alt { saved_pos, .. } => *saved_pos -= min_pos,
-                        Frame::Repeat { saved_pos, .. } => *saved_pos -= min_pos,
+                        Frame::Alt { backtrack_pos, .. } => *backtrack_pos = backtrack_pos.saturating_sub(min_pos),
+                        Frame::Repeat { backtrack_pos, .. } => *backtrack_pos = backtrack_pos.saturating_sub(min_pos),
                         _ => {}
                     }
                 }
@@ -438,9 +486,9 @@ impl<'a> Frame<'a> {
     fn from_prod(prod: &'a Prod) -> Frame<'a> {
         match prod {
             Prod::Seq(items) => Frame::Seq { items, idx: 0 },
-            Prod::Alt(alts) => Frame::Alt { alts, idx: 0, saved_pos: 0 },
+            Prod::Alt(alts) => Frame::Alt { alts, idx: 0, backtrack_pos: 0, event_count_at_start: 0 },
             Prod::Group(inner) => Frame::Group { inner },
-            Prod::Repeat { item, quant } => Frame::Repeat { item, quant, count: 0, saved_pos: 0, trying: true },
+            Prod::Repeat { item, quant } => Frame::Repeat { item, quant, count: 0, backtrack_pos: 0, trying: true },
             Prod::Terminal { kind, .. } => Frame::Terminal { kind },
             Prod::Class(class) => Frame::Class { class },
             Prod::Ref { name, .. } => Frame::Ref { name: name.as_str(), prod, stage: RefStage::Start },
