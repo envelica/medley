@@ -1,5 +1,6 @@
 // Phase 5: Spans, Positions, and Diagnostics Tests
-use medley::ebnf::{grammar, parse_str, ParseEvent, Span, ParseError, Parser};
+use medley::ebnf::{grammar, parse_str, ParseEvent, ParseError, Parser};
+use medley::ebnf::Span;
 use std::io::Cursor;
 
 #[test]
@@ -289,3 +290,6 @@ fn test_column_tracking_within_line() {
         _ => panic!("Expected third token"),
     }
 }
+
+
+

@@ -51,3 +51,4 @@ fn valid_grammar_compiles() {
     };
     assert_eq!(g.rules.len(), 3);
 }
+

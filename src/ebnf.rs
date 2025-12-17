@@ -1,13 +1,15 @@
-//! EBNF module root using newer Rust module style (file + subfolder).
+//! EBNF grammar definition and parsing.
 //!
-//! Submodules live under `src/ebnf/` (e.g., `ir.rs`).
-//! This file declares and re-exports them for public use.
+//! This module provides EBNF grammar types and a streaming parser
+//! for parsing input according to EBNF grammars.
 
-mod ir;
+mod span;
+mod grammar;
 mod parser;
 
-pub use ir::*;
+pub use span::*;
+pub use grammar::*;
 pub use parser::*;
 
-// Re-export the grammar! macro from medley-macros
+// Re-export the grammar! macro
 pub use medley_macros::grammar;

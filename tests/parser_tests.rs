@@ -1,4 +1,4 @@
-use medley::ebnf::{grammar, ParseEvent, TokenKind, Parser};
+use medley::ebnf::{grammar, {ParseEvent, TokenKind, Parser}};
 
 #[test]
 fn parses_simple_sequence() {
@@ -36,8 +36,10 @@ fn handles_alternation() {
     while let Some(ev) = parser.next_event() {
         events.push(ev);
     }
-    // Current parser yields an error for unmatched first alternative; ensure it surfaces.
-    assert!(events.iter().any(|e| matches!(e, ParseEvent::Error(_))));
+    // Parser should successfully match second alternative without emitting errors
+    assert!(!events.iter().any(|e| matches!(e, ParseEvent::Error(_))));
+    // Should have Start, Token ("y"), End events
+    assert!(events.iter().any(|e| matches!(e, ParseEvent::Token { .. })));
 }
 
 #[test]
@@ -87,3 +89,4 @@ fn reports_error_context() {
     assert!(err.message.contains("failed to match"));
     assert_eq!(err.rule_context.as_deref(), Some("start"));
 }
+
