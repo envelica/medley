@@ -36,4 +36,3 @@ fn test_char_and_string_literals() {
     
     assert_eq!(g.rules.len(), 2);
 }
-
