@@ -16,12 +16,7 @@ fn test_parse_from_bufreader() {
 }
 
 #[test]
-#[ignore] // Known issue: Repeated rule references cause infinite loop - Phase 9
 fn test_parse_repeated_rule_reference() {
-    // TODO: This test exposes a bug in how the parser handles repeated rule references.
-    // The grammar `start = digit+; digit = [0-9];` causes infinite loops.
-    // Direct `[0-9]+` works fine, so the issue is in Ref frame handling within Repeat.
-    // This should be fixed in Phase 9 (Parser correctness improvements).
     let g = grammar! {
         start = digit+;
         digit = [0-9];
@@ -29,22 +24,15 @@ fn test_parse_repeated_rule_reference() {
     
     // Create input
     let reader = Cursor::new(b"123");
-    let mut token_count = 0;
-    for event in parse(&g, reader) {
-        if matches!(event, ParseEvent::Token { .. }) {
-            token_count += 1;
-        }
-    }
+    let events: Vec<_> = parse(&g, reader).collect();
+    println!("Events: {:?}", events);
+    let token_count = events.iter().filter(|e| matches!(e, ParseEvent::Token { .. })).count();
     
-    assert!(token_count > 0);
+    assert_eq!(token_count, 3, "Should parse all three digits");
 }
 
 #[test]
-#[ignore] // Known issue: Repeated rule references cause infinite loop - Phase 9
 fn test_parse_multiline_input() {
-    // TODO: This test exposes the same bug as test_parse_repeated_rule_reference.
-    // Rule references inside repetitions cause infinite loops.
-    // This should be fixed in Phase 9.
     let g = grammar! {
         start = line+;
         line = word ws;
@@ -55,9 +43,11 @@ fn test_parse_multiline_input() {
     let input = b"hello world test ";
     let reader = Cursor::new(&input[..]);
     let events: Vec<_> = parse(&g, reader).collect();
+    println!("Multiline events: {:?}", events);
     
     let token_count = events.iter().filter(|e| matches!(e, ParseEvent::Token { .. })).count();
-    assert!(token_count > 0);
+    // Each word character is a separate token, plus spaces
+    assert!(token_count > 0, "Should parse words and whitespace");
 }
 
 #[test]
@@ -111,11 +101,8 @@ fn test_repetition_boundary() {
     let reader = Cursor::new(b"123abc");
     let events: Vec<_> = parse(&g, reader).collect();
     
-    // Direct character class repetition works fine
-    let token_count = events.iter().filter(|e| matches!(e, ParseEvent::Token { .. })).count();
-    println!("Token count: {}", token_count);
-    // Character class produces one token event, not per-character
-    assert!(token_count >= 0, "Document behavior");
+    let has_error = events.iter().any(|e| matches!(e, ParseEvent::Error(_)));
+    assert!(has_error, "Should report an error when trailing characters follow digits");
 }
 
 #[test]

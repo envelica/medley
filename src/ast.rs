@@ -3,12 +3,99 @@
 //! Provides a complete, non-lazy AST builder that consumes all parse events
 //! and constructs a full syntax tree. This is suitable for language parsing where the
 //! entire source code is typically small enough to fit in memory.
+//!
+//! # Memory Tradeoffs
+//!
+//! The AST module offers an **on-demand** approach to building complete syntax trees.
+//! Understanding the tradeoffs is important for choosing the right parsing strategy:
+//!
+//! ## Pull Parsing (Zero-Copy, Streaming)
+//!
+//! **When to use:** Processing large files, streaming data, or memory-constrained environments.
+//!
+//! - **Memory:** O(1) - Constant memory usage, only buffering small chunks
+//! - **Performance:** Fastest for large inputs, no allocation overhead
+//! - **Flexibility:** Can process infinite streams, stop early, skip irrelevant data
+//! - **Use case:** Log processing, CSV parsing, data validation, large document scanning
+//!
+//! ```ignore
+//! use medley::ebnf::{grammar, parse, ParseEvent};
+//! use std::io::Cursor;
+//!
+//! let g = grammar! { record = [a-z]+ (',' [a-z]+)*; };
+//! for event in parse(&g, Cursor::new(b"a,b,c")) {
+//!     match event {
+//!         ParseEvent::Token { .. } => { /* process */ }
+//!         _ => {}
+//!     }
+//! }
+//! ```
+//!
+//! ## AST Building (Full Tree)
+//!
+//! **When to use:** Need random access, multiple passes, or tree transformations.
+//!
+//! - **Memory:** O(n) - Proportional to input size, stores entire tree
+//! - **Performance:** Additional allocation cost, slower for very large inputs
+//! - **Flexibility:** Easy random access, tree transformations, multiple passes
+//! - **Use case:** Programming language parsing, JSON/XML processing, syntax analysis
+//!
+//! ```
+//! use medley::ebnf::grammar;
+//! use medley::ast::parse_str;
+//!
+//! let g = grammar! { start = "hello"; };
+//! let ast = parse_str(&g, "hello").expect("parse failed");
+//!
+//! // Can now traverse the tree multiple times
+//! let terminals = ast.collect_terminals();
+//! let depth = ast.depth();
+//! ```
+//!
+//! ## Visitor Pattern (AST Traversal)
+//!
+//! For operations on existing ASTs, use the visitor pattern to avoid modifying the core structure:
+//!
+//! ```
+//! use medley::ast::{Visitor, parse_str};
+//! use medley::ebnf::{grammar, Span};
+//!
+//! struct TerminalCounter { count: usize }
+//!
+//! impl Visitor for TerminalCounter {
+//!     fn visit_terminal(&mut self, _value: &str, _span: &Span) {
+//!         self.count += 1;
+//!     }
+//! }
+//!
+//! let g = grammar! { start = "a" "b"; };
+//! let ast = parse_str(&g, "ab").unwrap();
+//! let mut counter = TerminalCounter { count: 0 };
+//! counter.visit_ast(&ast);
+//! assert_eq!(counter.count, 2);
+//! ```
+//!
+//! ## Decision Guide
+//!
+//! Choose **Pull Parsing** when:
+//! - Input size > 10MB
+//! - Memory is constrained
+//! - Only need one pass through data
+//! - Processing can stop early
+//!
+//! Choose **AST Building** when:
+//! - Input size < 1MB (typical source files)
+//! - Need multiple passes or transformations
+//! - Random access to tree nodes required
+//! - Building IDE features or static analysis tools
 
 mod node;
 mod builder;
+mod visitor;
 
 pub use node::{AstNode, Ast, AstMetadata};
 pub use builder::AstBuilder;
+pub use visitor::{Visitor, VisitorMut};
 
 /// Parse an input string using an EBNF grammar and build a complete AST.
 ///

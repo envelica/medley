@@ -202,7 +202,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 RefStage::Start => {
                     self.events.push_back(ParseEvent::Start { rule: name });
                     self.frames.push(Frame::Ref { name, prod, stage: RefStage::Parsing });
-                    self.frames.push(Frame::from_prod(prod));
+                    self.frames.push(Frame::from_prod(prod, self.grammar));
                     None
                 }
                 RefStage::Parsing => {
@@ -219,7 +219,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
             Frame::Seq { items, idx } => {
                 if idx < items.len() {
                     self.frames.push(Frame::Seq { items, idx: idx + 1 });
-                    self.frames.push(Frame::from_prod(&items[idx]));
+                    self.frames.push(Frame::from_prod(&items[idx], self.grammar));
                 }
                 None
             }
@@ -236,7 +236,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
                         backtrack_pos: current_pos,
                         event_count_at_start: current_event_count,
                     });
-                    self.frames.push(Frame::from_prod(&alts[0]));
+                    self.frames.push(Frame::from_prod(&alts[0], self.grammar));
                 } else if idx > 0 {
                     // Check if previous branch succeeded
                     let branch_succeeded = !self.branch_failed;
@@ -256,7 +256,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
                             backtrack_pos,
                             event_count_at_start,
                         });
-                        self.frames.push(Frame::from_prod(&alts[idx]));
+                        self.frames.push(Frame::from_prod(&alts[idx], self.grammar));
                     } else {
                         // All alternatives failed - mark as failed
                         // If parent frame has no way to handle this, they will fail accordingly
@@ -276,7 +276,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
             }
 
             Frame::Group { inner } => {
-                self.frames.push(Frame::from_prod(inner));
+                self.frames.push(Frame::from_prod(inner, self.grammar));
                 None
             }
 
@@ -292,7 +292,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
                         }
                     }
                     self.frames.push(Frame::Repeat { item, quant, count, backtrack_pos: self.pos, trying: false });
-                    self.frames.push(Frame::from_prod(item));
+                    self.frames.push(Frame::from_prod(item, self.grammar));
                 } else {
                     // After attempting one repetition
                     if self.pos > backtrack_pos {
@@ -483,7 +483,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
 }
 
 impl<'a> Frame<'a> {
-    fn from_prod(prod: &'a Prod) -> Frame<'a> {
+    fn from_prod(prod: &'a Prod, grammar: &'a Grammar) -> Frame<'a> {
         match prod {
             Prod::Seq(items) => Frame::Seq { items, idx: 0 },
             Prod::Alt(alts) => Frame::Alt { alts, idx: 0, backtrack_pos: 0, event_count_at_start: 0 },
@@ -491,7 +491,14 @@ impl<'a> Frame<'a> {
             Prod::Repeat { item, quant } => Frame::Repeat { item, quant, count: 0, backtrack_pos: 0, trying: true },
             Prod::Terminal { kind, .. } => Frame::Terminal { kind },
             Prod::Class(class) => Frame::Class { class },
-            Prod::Ref { name, .. } => Frame::Ref { name: name.as_str(), prod, stage: RefStage::Start },
+            Prod::Ref { name, .. } => {
+                // Look up the rule in the grammar
+                let rule_prod = grammar.rules.iter()
+                    .find(|r| r.name == *name)
+                    .map(|r| &r.production)
+                    .unwrap_or(prod); // Fallback to current prod if not found (will error later)
+                Frame::Ref { name: name.as_str(), prod: rule_prod, stage: RefStage::Start }
+            }
         }
     }
 }

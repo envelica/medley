@@ -2,7 +2,7 @@ use medley::ebnf::{grammar, Grammar, ParseEvent, Parser, TokenKind};
 
 fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
     let mut num_buf = String::new();
-    let mut left: Option<i64> = None;
+    let mut nums: Vec<i64> = Vec::new();
     let mut op: Option<char> = None;
 
     let mut parser = Parser::from_str(grammar, input);
@@ -17,37 +17,55 @@ fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
                 if ch.is_ascii_digit() {
                     num_buf.push(ch);
                 } else if ch == '+' || ch == '-' {
-                    if left.is_none() {
-                        left = Some(num_buf.parse().map_err(|e| format!("invalid number '{num_buf}': {e}"))?);
-                    }
-                    num_buf.clear();
                     op = Some(ch);
                 }
             }
-            ParseEvent::Error(_) => break,
+            ParseEvent::End { rule } if rule == "num" => {
+                // Number ended - convert accumulated digits
+                if !num_buf.is_empty() {
+                    let num: i64 = num_buf.parse().map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
+                    nums.push(num);
+                    num_buf.clear();
+                }
+            }
+            ParseEvent::Error(_) => {
+                // Flush any remaining number
+                if !num_buf.is_empty() {
+                    let num: i64 = num_buf.parse().map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
+                    nums.push(num);
+                    num_buf.clear();
+                }
+                break;
+            }
             _ => {}
         }
     }
 
-    let right: i64 = num_buf
-        .parse()
-        .map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
+    if nums.len() == 1 {
+        return Ok(nums[0]);
+    } else if nums.len() == 2 {
+        let left = nums[0];
+        let right = nums[1];
+        let op = op.ok_or_else(|| "operator missing".to_string())?;
 
-    let left = left.ok_or_else(|| "left operand missing".to_string())?;
-    let op = op.ok_or_else(|| "operator missing".to_string())?;
+        let result = match op {
+            '+' => left + right,
+            '-' => left - right,
+            _ => return Err(format!("unsupported operator: {op}")),
+        };
 
-    let result = match op {
-        '+' => left + right,
-        '-' => left - right,
-        _ => return Err(format!("unsupported operator: {op}")),
-    };
-
-    Ok(result)
+        Ok(result)
+    } else {
+        Err(format!("expected 1 or 2 numbers, got {}", nums.len()))
+    }
 }
 
 fn main() {
     let grammar = grammar! {
-        expr = [0123456789+-]+;
+        expr = num op num;
+        num = digit digit?;
+        digit = [0-9];
+        op = [+-];
     };
 
     let input = "12+30";

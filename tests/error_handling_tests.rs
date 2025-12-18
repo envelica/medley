@@ -45,7 +45,7 @@ fn test_all_alternation_branches_fail() {
     
     let events: Vec<_> = parse_str(&g, "fish").collect();
     
-    let has_error = events.iter().any(|e| matches!(e, ParseEvent::Error(_)));
+    let _has_error = events.iter().any(|e| matches!(e, ParseEvent::Error(_)));
     let token_events: Vec<_> = events.iter().filter(|e| matches!(e, ParseEvent::Token { .. })).collect();
     
     // Parser behavior: alternation can complete Start/End without matching

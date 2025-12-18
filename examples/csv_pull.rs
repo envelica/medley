@@ -12,23 +12,23 @@ fn stream_csv_line(grammar: &Grammar, line: &str) {
                     TokenKind::Char(c) | TokenKind::Class(c) => c,
                     TokenKind::Str(s) => s.chars().next().unwrap_or(','),
                 };
-
-                match ch {
-                    ',' => {
-                        record.push(field_buf.clone());
-                        field_buf.clear();
-                    }
-                    _ => field_buf.push(ch),
+                
+                // Skip comma delimiters
+                if ch != ',' {
+                    field_buf.push(ch);
                 }
             }
-            ParseEvent::Error(_) => continue,
+            ParseEvent::End { rule } if rule == "field" => {
+                // Field ended, save it
+                if !field_buf.is_empty() {
+                    record.push(field_buf.clone());
+                    field_buf.clear();
+                }
+            }
             _ => {}
         }
     }
 
-    if !field_buf.is_empty() {
-        record.push(field_buf);
-    }
     if !record.is_empty() {
         println!("record: {:?}", record);
     }
@@ -36,7 +36,9 @@ fn stream_csv_line(grammar: &Grammar, line: &str) {
 
 fn main() {
     let grammar = grammar! {
-        record = [abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789,]+;
+        record = field (',' field)*;
+        field = word+;
+        word = [a-z] | [A-Z] | [0-9];
     };
 
     let data = "alpha,beta,gamma\n1,2,3\nx,y,z\n";
