@@ -256,38 +256,78 @@ fn parse_char_class(stream: TokenStream) -> Result<ProdAst> {
     let mut i = start_idx;
     
     while i < tokens.len() {
+        // Helper to extract a single character from either ident or literal
+        let get_char = |token: &TokenTree| -> Option<char> {
+            match token {
+                TokenTree::Ident(ident) => {
+                    let s = ident.to_string();
+                    if s.len() == 1 { s.chars().next() } else { None }
+                }
+                TokenTree::Literal(lit) => {
+                    let lit_str = lit.to_string();
+                    if lit_str.starts_with('\'') && lit_str.ends_with('\'') {
+                        lit_str.chars().nth(1)
+                    } else if lit_str.len() == 1 {
+                        lit_str.chars().next()
+                    } else {
+                        None
+                    }
+                }
+                _ => None,
+            }
+        };
+        
         match &tokens[i] {
             TokenTree::Ident(ident) => {
                 let s = ident.to_string();
-                for ch in s.chars() {
+                if s.len() == 1 {
+                    let ch = s.chars().next().unwrap();
+                    // Check for range
+                    if i + 2 < tokens.len() {
+                        if let TokenTree::Punct(p) = &tokens[i + 1] {
+                            if p.as_char() == '-' {
+                                if let Some(end_ch) = get_char(&tokens[i + 2]) {
+                                    ranges.push((ch, end_ch));
+                                    i += 3;
+                                    continue;
+                                }
+                            }
+                        }
+                    }
                     chars.push(ch);
+                } else {
+                    for ch in s.chars() {
+                        chars.push(ch);
+                    }
                 }
                 i += 1;
             }
             TokenTree::Literal(lit) => {
                 let lit_str = lit.to_string();
-                if lit_str.starts_with('\'') && lit_str.ends_with('\'') {
-                    let ch = lit_str.chars().nth(1).unwrap();
-                    
-                    // Check if next is a dash (range)
+                let ch_opt = if lit_str.starts_with('\'') && lit_str.ends_with('\'') {
+                    lit_str.chars().nth(1)
+                } else if lit_str.len() == 1 {
+                    lit_str.chars().next()
+                } else {
+                    None
+                };
+                
+                if let Some(ch) = ch_opt {
+                    // Check for range
                     if i + 2 < tokens.len() {
                         if let TokenTree::Punct(p) = &tokens[i + 1] {
                             if p.as_char() == '-' {
-                                if let TokenTree::Literal(end_lit) = &tokens[i + 2] {
-                                    let end_str = end_lit.to_string();
-                                    if end_str.starts_with('\'') && end_str.ends_with('\'') {
-                                        let end_ch = end_str.chars().nth(1).unwrap();
-                                        ranges.push((ch, end_ch));
-                                        i += 3;
-                                        continue;
-                                    }
+                                if let Some(end_ch) = get_char(&tokens[i + 2]) {
+                                    ranges.push((ch, end_ch));
+                                    i += 3;
+                                    continue;
                                 }
                             }
                         }
                     }
-                    
                     chars.push(ch);
                 } else {
+                    // Multi-character literal - add all chars
                     for ch in lit_str.chars() {
                         chars.push(ch);
                     }

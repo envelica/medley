@@ -26,25 +26,188 @@ The purpose of medley is to aggregate various small, frequently needed utility f
 * **Ergonomics:** Provides intuitive, easy-to-use APIs for common development needs.
 * **Modular:** Modules are designed to be entirely independent, preventing feature bloat.
 
-## Usage (Future)
+## Modules
 
-Once stable, you will be able to add medley to your project using Cargo:
+Currently, medley provides:
 
-`	oml
+### EBNF Parser (`medley::ebnf`)
+
+A zero-copy, streaming EBNF parser with a compile-time `grammar!` macro. Perfect for parsing structured text with minimal memory overhead.
+
+**Features:**
+- Pull-based parsing (O(1) memory for large inputs)
+- Optional AST building for small inputs
+- Compile-time grammar validation
+- Precise error reporting with spans
+
+### Grammar Syntax
+
+The `grammar!` macro accepts EBNF-like syntax:
+
+```rust
+grammar! {
+    // Sequences: match items in order
+    greeting = "hello" " " name;
+    
+    // Alternation: match one of several options
+    digit = [0-9];
+    vowel = 'a' | 'e' | 'i' | 'o' | 'u';
+    
+    // Repetition: zero or more matches
+    word = letter+;
+    optional_sign = [+-]?;
+    
+    // Character classes: match any character in range
+    letter = [a-z] | [A-Z];
+    alphanumeric = [a-zA-Z0-9];
+    
+    // Negated classes: match any character NOT in range
+    non_digit = [^0-9];
+    
+    // Rule references: reuse named rules
+    sentence = word (' ' word)*;
+}
+
+## Usage
+
+Add medley to your `Cargo.toml`:
+
+```toml
 [dependencies]
-medley =  0.1 # Use the latest stable version when released
-`
+medley = "0.1"  # Use the latest stable version when released
+```
+
+### Quick Start: Pull Parser
+
+Process data streams with constant memory usage:
+
+```rust
+use medley::ebnf::{grammar, parse, ParseEvent};
+use std::io::Cursor;
+
+let grammar = grammar! {
+    record = field (',' field)*;
+    field = [a-z]+;
+};
+
+for event in parse(&grammar, Cursor::new(b"alpha,beta,gamma")) {
+    match event {
+        ParseEvent::Token { kind, .. } => {
+            // Process each token as it's parsed
+        }
+        ParseEvent::Error(e) => eprintln!("Parse error: {}", e.message),
+        _ => {}
+    }
+}
+```
+
+### Quick Start: AST Building
+
+Build complete syntax trees for small inputs:
+
+```rust
+use medley::ebnf::grammar;
+use medley::ast::parse_str;
+
+let grammar = grammar! {
+    expr = term (op term)*;
+    term = [0-9]+;
+    op = '+' | '-';
+};
+
+let ast = parse_str(&grammar, "12+34").expect("parse failed");
+println!("Parsed {} terminals", ast.collect_terminals().len());
+```
+
+### Quick Start: AST Visitor Pattern
+
+Traverse and transform syntax trees:
+
+```rust
+use medley::ast::{Visitor, parse_str};
+use medley::ebnf::{grammar, Span};
+
+struct TerminalCounter { count: usize }
+
+impl Visitor for TerminalCounter {
+    fn visit_terminal(&mut self, _value: &str, _span: &Span) {
+        self.count += 1;
+    }
+}
+
+let g = grammar! { start = "hello" " " "world"; };
+let ast = parse_str(&g, "hello world").unwrap();
+
+let mut counter = TerminalCounter { count: 0 };
+counter.visit_ast(&ast);
+assert_eq!(counter.count, 3);
+```
 
 ## Examples
 
-Run the expression pull-parser example:
+Explore complete, runnable examples in the [`examples/`](examples/) directory:
 
-`
+### Expression Evaluator
+Pull-parse and evaluate arithmetic expressions:
+
+```bash
 cargo run --example expr_pull
-`
+```
 
-Run the streaming CSV pull-parser example:
+```rust
+// Parses "12+30" and computes the result
+let grammar = grammar! {
+    expr = num op num;
+    num = digit digit?;
+    digit = [0-9];
+    op = [+-];
+};
+// Output: 12+30 = 42
+```
 
-`
+### CSV Stream Parser
+Process CSV data with constant memory:
+
+```bash
 cargo run --example csv_pull
-`
+```
+
+```rust
+// Parses CSV records field-by-field
+let grammar = grammar! {
+    record = field (',' field)*;
+    field = word+;
+    word = [a-z] | [A-Z] | [0-9];
+};
+// Output: record: ["alpha", "beta", "gamma"]
+```
+
+### AST Visitor
+Custom tree traversal and analysis:
+
+```bash
+cargo run --example ast_visitor
+```
+
+Demonstrates counting terminals, collecting rule names, and pretty-printing AST structure.
+
+### AST Transformer
+In-place tree transformations:
+
+```bash
+cargo run --example ast_transform
+```
+
+Shows how to use `VisitorMut` to transform terminal values to uppercase.
+
+### Performance Benchmarks
+
+Measure parsing performance:
+
+```bash
+# Small input benchmark (100K iterations)
+cargo run --example parse_small
+
+# Large stream benchmark (1MB, chunked reading)
+cargo run --example parse_stream --release
+```
