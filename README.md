@@ -40,33 +40,39 @@ A zero-copy, streaming EBNF parser with a compile-time `grammar!` macro. Perfect
 - Compile-time grammar validation
 - Precise error reporting with spans
 
+## Documentation & Links
+
+- mdBook (GitHub Pages): https://envelica.github.io/medley/
+- Examples: [examples/](examples/)
+- Macro spec: [docs/grammar-macro-spec.md](docs/grammar-macro-spec.md)
+
 ### Grammar Syntax (W3C-style EBNF)
 
-The `grammar!` macro uses W3C-style EBNF constructs:
+The `grammar!` macro uses W3C-style EBNF constructs with `::=`:
 
 ```rust
 grammar! {
     // Sequences: match items in order
-    greeting = "hello" " " name;
+    greeting ::= "hello" " " name;
 
     // Alternation: match one of several options
-    vowel = 'a' | 'e' | 'i' | 'o' | 'u';
+    vowel    ::= 'a' | 'e' | 'i' | 'o' | 'u';
 
     // Optional: [ ... ]
-    excited = "hello" [ "!" ];
+    excited  ::= "hello" [ "!" ];
 
     // Repetition (zero or more): { ... }
-    spaces = { ' ' };
+    spaces   ::= { ' ' };
 
     // Ranges: 'a'..'z' (inclusive)
-    letter = 'a'..'z' | 'A'..'Z';
-    digit  = '0'..'9';
+    letter   ::= 'a'..'z' | 'A'..'Z';
+    digit    ::= '0'..'9';
 
     // One-or-more: combine item + repetition
-    word = letter { letter };
+    word     ::= letter { letter };
 
     // Grouping with parentheses
-    sentence = word { ' ' word };
+    sentence ::= word { ' ' word };
 }
 ```
 ## Usage
@@ -78,14 +84,13 @@ Add medley to your `Cargo.toml`:
 medley = "0.1"  # Use the latest stable version when released
 ```
 
-To opt out of EBNF and its macros (feature-gated):
+Core APIs:
+- `grammar!` — declare W3C-style grammars with `::=`.
+- `parse` / `parse_str` — stream parse events (`ParseEvent`) over any `BufRead` or `&str`.
+- `ast::parse_str` — build a full AST when the input comfortably fits in memory.
+- Errors surface as `ParseEvent::Error` with message, position, optional span, rule context, and hint.
 
-```toml
-[dependencies]
-medley = { version = "0.1", default-features = false }
-```
-
-### Quick Start: Pull Parser
+### Quick Start: Streaming Parser
 
 Process data streams with constant memory usage:
 
@@ -94,9 +99,9 @@ use medley::ebnf::{grammar, parse, ParseEvent};
 use std::io::Cursor;
 
 let grammar = grammar! {
-    record = field { ',' field };
-    letter = 'a'..'z';
-    field = letter { letter };
+    record ::= field { ',' field };
+    letter ::= 'a'..'z';
+    field  ::= letter { letter };
 };
 
 for event in parse(&grammar, Cursor::new(b"alpha,beta,gamma")) {
@@ -110,6 +115,8 @@ for event in parse(&grammar, Cursor::new(b"alpha,beta,gamma")) {
 }
 ```
 
+Errors are delivered as `ParseEvent::Error` with message, position, optional span, rule context, and hint. Inspect them instead of panicking.
+
 ### Quick Start: AST Building
 
 Build complete syntax trees for small inputs:
@@ -119,10 +126,10 @@ use medley::ebnf::grammar;
 use medley::ast::parse_str;
 
 let grammar = grammar! {
-    expr = term { op term };
-    term = digit { digit };
-    digit = '0'..'9';
-    op = '+' | '-';
+    expr  ::= term { op term };
+    term  ::= digit { digit };
+    digit ::= '0'..'9';
+    op    ::= '+' | '-';
 };
 
 let ast = parse_str(&grammar, "12+34").expect("parse failed");
@@ -145,7 +152,7 @@ impl Visitor for TerminalCounter {
     }
 }
 
-let g = grammar! { start = "hello" " " "world"; };
+let g = grammar! { start ::= "hello" " " "world"; };
 let ast = parse_str(&g, "hello world").unwrap();
 
 let mut counter = TerminalCounter { count: 0 };
@@ -167,10 +174,10 @@ cargo run --example expr_pull
 ```rust
 // Parses "12+30" and computes the result
 let grammar = grammar! {
-    expr = num op num;
-    num = digit [ digit ];
-    digit = '0'..'9';
-    op = [+-];
+    expr  ::= num op num;
+    num   ::= digit { digit };
+    digit ::= '0'..'9';
+    op    ::= '+' | '-';
 };
 // Output: 12+30 = 42
 ```
@@ -185,9 +192,9 @@ cargo run --example csv_pull
 ```rust
 // Parses CSV records field-by-field
 let grammar = grammar! {
-    record = field { ',' field };
-    field = word { word };
-    word = 'a'..'z' | 'A'..'Z' | '0'..'9';
+    record ::= field { ',' field };
+    field  ::= word { word };
+    word   ::= 'a'..'z' | 'A'..'Z' | '0'..'9';
 };
 // Output: record: ["alpha", "beta", "gamma"]
 ```
@@ -226,8 +233,16 @@ cargo run --example parse_stream --release
 
 The `examples/w3c_ebnf.rs` file contains a grammar for a common EBNF dialect
 expressible with `grammar!`. It demonstrates sequences, alternations, grouping,
-quantifiers (`+ * ?`), terminals, and character classes. Run it with:
+optional/repetition (`[]` / `{}`), terminals, and ranges. Run it with:
 
 ```bash
 cargo run --example w3c_ebnf
 ```
+
+## Troubleshooting & Limitations
+
+- Rules must use `::=`; using `=` will fail during macro expansion.
+- `[]` (optional) and `{}` (zero-or-more) replace postfix `? * +`; one-or-more is `item { item }`.
+- Ranges use `'a'..'z'` instead of `[a-z]`.
+- Streaming backtracking is bounded to the current buffer window; extremely deep backtracking over huge inputs may fail.
+- Spans are best-effort when streaming; for precise spans, prefer `parse_str` on in-memory text.

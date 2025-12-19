@@ -1,0 +1,12 @@
+[book]
+title = "Medley"
+author = ["Medley Maintainers"]
+multilingual = false
+src = "src"
+
+[build]
+dist = "book"
+
+[output.html]
+default-theme = "light"
+site-url = "/medley/"
