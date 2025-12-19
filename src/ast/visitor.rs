@@ -24,7 +24,7 @@
 //! }
 //!
 //! let g = grammar! {
-//!     start = "hello" " " "world";
+//!     start ::= "hello" " " "world";
 //! };
 //!
 //! let ast = parse_str(&g, "hello world").expect("parse failed");
@@ -33,7 +33,7 @@
 //! assert_eq!(counter.count, 3);
 //! ```
 
-use super::node::{AstNode, Ast};
+use super::node::{Ast, AstNode};
 use crate::ebnf::Span;
 
 /// Visitor trait for traversing AST nodes immutably.

@@ -22,7 +22,7 @@
 //! use medley::ebnf::{grammar, parse, ParseEvent};
 //! use std::io::Cursor;
 //!
-//! let g = grammar! { record = [a-z]+ (',' [a-z]+)*; };
+//! let g = grammar! { record ::= letter { letter } { ',' letter { letter } }; letter ::= 'a'..'z'; };
 //! for event in parse(&g, Cursor::new(b"a,b,c")) {
 //!     match event {
 //!         ParseEvent::Token { .. } => { /* process */ }
@@ -44,7 +44,7 @@
 //! use medley::ebnf::grammar;
 //! use medley::ast::parse_str;
 //!
-//! let g = grammar! { start = "hello"; };
+//! let g = grammar! { start ::= "hello"; };
 //! let ast = parse_str(&g, "hello").expect("parse failed");
 //!
 //! // Can now traverse the tree multiple times
@@ -68,7 +68,7 @@
 //!     }
 //! }
 //!
-//! let g = grammar! { start = "a" "b"; };
+//! let g = grammar! { start ::= "a" "b"; };
 //! let ast = parse_str(&g, "ab").unwrap();
 //! let mut counter = TerminalCounter { count: 0 };
 //! counter.visit_ast(&ast);
@@ -89,12 +89,12 @@
 //! - Random access to tree nodes required
 //! - Building IDE features or static analysis tools
 
-mod node;
 mod builder;
+mod node;
 mod visitor;
 
-pub use node::{AstNode, Ast, AstMetadata};
 pub use builder::AstBuilder;
+pub use node::{Ast, AstMetadata, AstNode};
 pub use visitor::{Visitor, VisitorMut};
 
 /// Parse an input string using an EBNF grammar and build a complete AST.
@@ -115,12 +115,12 @@ pub use visitor::{Visitor, VisitorMut};
 /// use medley::ast;
 ///
 /// let g = grammar! {
-///     start = "hello";
+///     start ::= "hello";
 /// };
 /// let ast = ast::parse_str(&g, "hello").expect("parse failed");
 /// ```
 pub fn parse_str(grammar: &crate::ebnf::Grammar, input: &str) -> Result<Ast, String> {
-    use crate::ebnf::{parse_str as ebnf_parse, ParseEvent, TokenKind};
+    use crate::ebnf::{ParseEvent, TokenKind, parse_str as ebnf_parse};
 
     let mut builder = AstBuilder::new();
 

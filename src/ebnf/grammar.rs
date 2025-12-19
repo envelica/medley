@@ -41,7 +41,10 @@ pub enum Prod {
     /// Repetition of an item with quantifier (*, +, ? maps to specific ranges)
     Repeat { item: Box<Prod>, quant: RepeatQuant },
     /// Terminal literal
-    Terminal { kind: TerminalKind, span: Option<Span> },
+    Terminal {
+        kind: TerminalKind,
+        span: Option<Span>,
+    },
     /// Character class
     Class(CharClass),
     /// Reference to another rule by name
@@ -88,7 +91,11 @@ impl Grammar {
             self.rules.iter().map(|r| r.name.as_str()).collect();
 
         // Walk productions and check references
-        fn check_prod(p: &Prod, defined: &std::collections::HashSet<&str>, errors: &mut Vec<String>) {
+        fn check_prod(
+            p: &Prod,
+            defined: &std::collections::HashSet<&str>,
+            errors: &mut Vec<String>,
+        ) {
             match p {
                 Prod::Seq(items) | Prod::Alt(items) => {
                     for it in items {
@@ -126,7 +133,9 @@ impl Grammar {
         use std::collections::{HashMap, HashSet};
 
         // Build rule lookup map
-        let rule_map: HashMap<&str, &Prod> = self.rules.iter()
+        let rule_map: HashMap<&str, &Prod> = self
+            .rules
+            .iter()
             .map(|r| (r.name.as_str(), &r.production))
             .collect();
 
@@ -198,11 +207,10 @@ impl Grammar {
             }
             Prod::Alt(alts) => {
                 // Check if any alternative is left-recursive
-                alts.iter().any(|alt| self.check_prod_left_recursion(alt, rule_map, visited, path))
+                alts.iter()
+                    .any(|alt| self.check_prod_left_recursion(alt, rule_map, visited, path))
             }
-            Prod::Group(inner) => {
-                self.check_prod_left_recursion(inner, rule_map, visited, path)
-            }
+            Prod::Group(inner) => self.check_prod_left_recursion(inner, rule_map, visited, path),
             Prod::Repeat { item, quant } => {
                 // Repeat with min=0 is nullable, so check the item
                 // Repeat with min>0 checks the item
@@ -228,7 +236,9 @@ impl Grammar {
         use std::collections::{HashMap, HashSet};
 
         // Build rule lookup map
-        let rule_map: HashMap<&str, &Prod> = self.rules.iter()
+        let rule_map: HashMap<&str, &Prod> = self
+            .rules
+            .iter()
             .map(|r| (r.name.as_str(), &r.production))
             .collect();
 
@@ -243,7 +253,13 @@ impl Grammar {
 
             let mut visiting = HashSet::new();
             let mut path = Vec::new();
-            if self.has_problematic_cycle(&rule.name, &rule_map, &mut visiting, &mut fully_processed, &mut path) {
+            if self.has_problematic_cycle(
+                &rule.name,
+                &rule_map,
+                &mut visiting,
+                &mut fully_processed,
+                &mut path,
+            ) {
                 let cycle = path.join(" -> ");
                 errors.push(format!("cyclic dependency detected: {}", cycle));
             }
@@ -359,7 +375,11 @@ mod tests {
     use super::*;
 
     fn rule(name: &str, production: Prod) -> Rule {
-        Rule { name: name.to_string(), production, span: None }
+        Rule {
+            name: name.to_string(),
+            production,
+            span: None,
+        }
     }
 
     #[test]
@@ -368,11 +388,25 @@ mod tests {
             rules: vec![
                 rule(
                     "digit",
-                    Prod::Class(CharClass { negated: false, chars: vec![], ranges: vec![("0", "9")].into_iter().map(|(a,b)| (a.chars().next().unwrap(), b.chars().next().unwrap())).collect(), span: None }),
+                    Prod::Class(CharClass {
+                        negated: false,
+                        chars: vec![],
+                        ranges: vec![("0", "9")]
+                            .into_iter()
+                            .map(|(a, b)| (a.chars().next().unwrap(), b.chars().next().unwrap()))
+                            .collect(),
+                        span: None,
+                    }),
                 ),
                 rule(
                     "number",
-                    Prod::Repeat { item: Box::new(Prod::Ref { name: "digit".into(), span: None }), quant: RepeatQuant { min: 1, max: None } },
+                    Prod::Repeat {
+                        item: Box::new(Prod::Ref {
+                            name: "digit".into(),
+                            span: None,
+                        }),
+                        quant: RepeatQuant { min: 1, max: None },
+                    },
                 ),
             ],
         };
@@ -385,10 +419,22 @@ mod tests {
     #[test]
     fn undefined_rule_reference_is_reported() {
         let g = Grammar {
-            rules: vec![rule("start", Prod::Ref { name: "missing".into(), span: None })],
+            rules: vec![rule(
+                "start",
+                Prod::Ref {
+                    name: "missing".into(),
+                    span: None,
+                },
+            )],
         };
         let errors = g.validate();
-        assert!(errors.iter().any(|e| e.contains("undefined rule 'missing'")), "errors: {:?}", errors);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("undefined rule 'missing'")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -400,18 +446,42 @@ mod tests {
                     "expr",
                     Prod::Alt(vec![
                         Prod::Seq(vec![
-                            Prod::Ref { name: "expr".into(), span: None },
-                            Prod::Terminal { kind: TerminalKind::Char('+'), span: None },
-                            Prod::Ref { name: "term".into(), span: None },
+                            Prod::Ref {
+                                name: "expr".into(),
+                                span: None,
+                            },
+                            Prod::Terminal {
+                                kind: TerminalKind::Char('+'),
+                                span: None,
+                            },
+                            Prod::Ref {
+                                name: "term".into(),
+                                span: None,
+                            },
                         ]),
-                        Prod::Ref { name: "term".into(), span: None },
+                        Prod::Ref {
+                            name: "term".into(),
+                            span: None,
+                        },
                     ]),
                 ),
-                rule("term", Prod::Terminal { kind: TerminalKind::Char('x'), span: None }),
+                rule(
+                    "term",
+                    Prod::Terminal {
+                        kind: TerminalKind::Char('x'),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(errors.iter().any(|e| e.contains("left recursion") && e.contains("expr")), "errors: {:?}", errors);
+        assert!(
+            errors
+                .iter()
+                .any(|e| e.contains("left recursion") && e.contains("expr")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -419,12 +489,28 @@ mod tests {
         // a = b; b = a
         let g = Grammar {
             rules: vec![
-                rule("a", Prod::Ref { name: "b".into(), span: None }),
-                rule("b", Prod::Ref { name: "a".into(), span: None }),
+                rule(
+                    "a",
+                    Prod::Ref {
+                        name: "b".into(),
+                        span: None,
+                    },
+                ),
+                rule(
+                    "b",
+                    Prod::Ref {
+                        name: "a".into(),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(errors.iter().any(|e| e.contains("left recursion")), "errors: {:?}", errors);
+        assert!(
+            errors.iter().any(|e| e.contains("left recursion")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -436,18 +522,40 @@ mod tests {
                     "expr",
                     Prod::Alt(vec![
                         Prod::Seq(vec![
-                            Prod::Ref { name: "term".into(), span: None },
-                            Prod::Terminal { kind: TerminalKind::Char('+'), span: None },
-                            Prod::Ref { name: "expr".into(), span: None },
+                            Prod::Ref {
+                                name: "term".into(),
+                                span: None,
+                            },
+                            Prod::Terminal {
+                                kind: TerminalKind::Char('+'),
+                                span: None,
+                            },
+                            Prod::Ref {
+                                name: "expr".into(),
+                                span: None,
+                            },
                         ]),
-                        Prod::Ref { name: "term".into(), span: None },
+                        Prod::Ref {
+                            name: "term".into(),
+                            span: None,
+                        },
                     ]),
                 ),
-                rule("term", Prod::Terminal { kind: TerminalKind::Char('x'), span: None }),
+                rule(
+                    "term",
+                    Prod::Terminal {
+                        kind: TerminalKind::Char('x'),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(!errors.iter().any(|e| e.contains("left recursion")), "errors: {:?}", errors);
+        assert!(
+            !errors.iter().any(|e| e.contains("left recursion")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -455,12 +563,28 @@ mod tests {
         // a = b; b = a  (pure reference cycle without terminals)
         let g = Grammar {
             rules: vec![
-                rule("a", Prod::Ref { name: "b".into(), span: None }),
-                rule("b", Prod::Ref { name: "a".into(), span: None }),
+                rule(
+                    "a",
+                    Prod::Ref {
+                        name: "b".into(),
+                        span: None,
+                    },
+                ),
+                rule(
+                    "b",
+                    Prod::Ref {
+                        name: "a".into(),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(errors.iter().any(|e| e.contains("cyclic dependency")), "errors: {:?}", errors);
+        assert!(
+            errors.iter().any(|e| e.contains("cyclic dependency")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -468,35 +592,71 @@ mod tests {
         // a = b; b = c; c = a  (three-way pure reference cycle)
         let g = Grammar {
             rules: vec![
-                rule("a", Prod::Ref { name: "b".into(), span: None }),
-                rule("b", Prod::Ref { name: "c".into(), span: None }),
-                rule("c", Prod::Ref { name: "a".into(), span: None }),
+                rule(
+                    "a",
+                    Prod::Ref {
+                        name: "b".into(),
+                        span: None,
+                    },
+                ),
+                rule(
+                    "b",
+                    Prod::Ref {
+                        name: "c".into(),
+                        span: None,
+                    },
+                ),
+                rule(
+                    "c",
+                    Prod::Ref {
+                        name: "a".into(),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(errors.iter().any(|e| e.contains("cyclic dependency")), "errors: {:?}", errors);
+        assert!(
+            errors.iter().any(|e| e.contains("cyclic dependency")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
     fn cycle_with_terminals_is_not_flagged() {
         // a = 'x' a 'y' | 'z'  (cycle with terminals - valid, like expression grammars)
         let g = Grammar {
-            rules: vec![
-                rule(
-                    "a",
-                    Prod::Alt(vec![
-                        Prod::Seq(vec![
-                            Prod::Terminal { kind: TerminalKind::Char('x'), span: None },
-                            Prod::Ref { name: "a".into(), span: None },
-                            Prod::Terminal { kind: TerminalKind::Char('y'), span: None },
-                        ]),
-                        Prod::Terminal { kind: TerminalKind::Char('z'), span: None },
+            rules: vec![rule(
+                "a",
+                Prod::Alt(vec![
+                    Prod::Seq(vec![
+                        Prod::Terminal {
+                            kind: TerminalKind::Char('x'),
+                            span: None,
+                        },
+                        Prod::Ref {
+                            name: "a".into(),
+                            span: None,
+                        },
+                        Prod::Terminal {
+                            kind: TerminalKind::Char('y'),
+                            span: None,
+                        },
                     ]),
-                ),
-            ],
+                    Prod::Terminal {
+                        kind: TerminalKind::Char('z'),
+                        span: None,
+                    },
+                ]),
+            )],
         };
         let errors = g.validate();
-        assert!(!errors.iter().any(|e| e.contains("cyclic dependency")), "errors: {:?}", errors);
+        assert!(
+            !errors.iter().any(|e| e.contains("cyclic dependency")),
+            "errors: {:?}",
+            errors
+        );
     }
 
     #[test]
@@ -507,22 +667,43 @@ mod tests {
                 rule(
                     "a",
                     Prod::Alt(vec![
-                        Prod::Ref { name: "b".into(), span: None },
-                        Prod::Terminal { kind: TerminalKind::Char('x'), span: None },
+                        Prod::Ref {
+                            name: "b".into(),
+                            span: None,
+                        },
+                        Prod::Terminal {
+                            kind: TerminalKind::Char('x'),
+                            span: None,
+                        },
                     ]),
                 ),
                 rule(
                     "b",
                     Prod::Alt(vec![
-                        Prod::Ref { name: "c".into(), span: None },
-                        Prod::Terminal { kind: TerminalKind::Char('y'), span: None },
+                        Prod::Ref {
+                            name: "c".into(),
+                            span: None,
+                        },
+                        Prod::Terminal {
+                            kind: TerminalKind::Char('y'),
+                            span: None,
+                        },
                     ]),
                 ),
-                rule("c", Prod::Terminal { kind: TerminalKind::Char('z'), span: None }),
+                rule(
+                    "c",
+                    Prod::Terminal {
+                        kind: TerminalKind::Char('z'),
+                        span: None,
+                    },
+                ),
             ],
         };
         let errors = g.validate();
-        assert!(!errors.iter().any(|e| e.contains("cyclic dependency")), "errors: {:?}", errors);
+        assert!(
+            !errors.iter().any(|e| e.contains("cyclic dependency")),
+            "errors: {:?}",
+            errors
+        );
     }
-
 }

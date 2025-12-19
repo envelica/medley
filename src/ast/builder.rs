@@ -1,7 +1,7 @@
 //! AST builder for constructing syntax trees from parse events.
 
+use super::node::{Ast, AstMetadata, AstNode};
 use crate::ebnf::Span;
-use super::node::{AstNode, Ast, AstMetadata};
 
 /// Builder for constructing an AST from a sequence of parse events.
 #[derive(Debug)]
@@ -123,7 +123,11 @@ impl AstBuilder {
             AstNode::Sequence { nodes, span }
         };
 
-        let node = AstNode::Rule { name, node: Box::new(inner), span };
+        let node = AstNode::Rule {
+            name,
+            node: Box::new(inner),
+            span,
+        };
         self.stack.last_mut().unwrap().push(node.clone());
         Some(node)
     }
@@ -154,7 +158,10 @@ impl AstBuilder {
         self.metadata.input_length = input_length;
         self.metadata.success = true;
 
-        Ok(Ast { root, metadata: self.metadata })
+        Ok(Ast {
+            root,
+            metadata: self.metadata,
+        })
     }
 }
 

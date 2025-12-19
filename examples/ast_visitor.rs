@@ -1,6 +1,6 @@
 // Example demonstrating the Visitor pattern for AST traversal
 use medley::ast::{Visitor, parse_str};
-use medley::ebnf::{grammar, Span};
+use medley::ebnf::{Span, grammar};
 
 // Example 1: Count all terminals in the AST
 struct TerminalCounter {
@@ -47,11 +47,13 @@ impl AstPrinter {
 
 impl Visitor for AstPrinter {
     fn visit_terminal(&mut self, value: &str, _span: &Span) {
-        self.output.push_str(&format!("{}Terminal: '{}'\n", self.indent_str(), value));
+        self.output
+            .push_str(&format!("{}Terminal: '{}'\n", self.indent_str(), value));
     }
 
     fn visit_sequence(&mut self, nodes: &[medley::ast::AstNode], _span: &Span) {
-        self.output.push_str(&format!("{}Sequence:\n", self.indent_str()));
+        self.output
+            .push_str(&format!("{}Sequence:\n", self.indent_str()));
         self.indent += 1;
         for node in nodes {
             self.visit_node(node);
@@ -60,7 +62,8 @@ impl Visitor for AstPrinter {
     }
 
     fn visit_rule(&mut self, name: &str, node: &medley::ast::AstNode, _span: &Span) {
-        self.output.push_str(&format!("{}Rule '{}':\n", self.indent_str(), name));
+        self.output
+            .push_str(&format!("{}Rule '{}':\n", self.indent_str(), name));
         self.indent += 1;
         self.visit_node(node);
         self.indent -= 1;
@@ -69,10 +72,10 @@ impl Visitor for AstPrinter {
 
 fn main() {
     let grammar = grammar! {
-        expr = num op num;
-        num = digit digit?;
-        digit = [0-9];
-        op = [+-];
+        expr ::= num op num;
+        num ::= digit [ digit ];
+        digit ::= '0'..'9';
+        op ::= '+' | '-';
     };
 
     let input = "12+34";

@@ -6,25 +6,13 @@ use crate::ebnf::Span;
 #[derive(Debug, Clone, PartialEq)]
 pub enum AstNode {
     /// A terminal token (literal character or string).
-    Terminal {
-        value: String,
-        span: Span,
-    },
+    Terminal { value: String, span: Span },
     /// A sequence of nodes.
-    Sequence {
-        nodes: Vec<AstNode>,
-        span: Span,
-    },
+    Sequence { nodes: Vec<AstNode>, span: Span },
     /// An alternation (one of several alternatives matched).
-    Alternation {
-        nodes: Vec<AstNode>,
-        span: Span,
-    },
+    Alternation { nodes: Vec<AstNode>, span: Span },
     /// A repetition of nodes.
-    Repetition {
-        nodes: Vec<AstNode>,
-        span: Span,
-    },
+    Repetition { nodes: Vec<AstNode>, span: Span },
     /// A rule reference application.
     Rule {
         name: String,
@@ -50,15 +38,27 @@ impl AstNode {
         match self {
             Self::Terminal { value, .. } => format!("Terminal({})", value),
             Self::Sequence { nodes, .. } => {
-                let inner = nodes.iter().map(|n| n.to_string_debug()).collect::<Vec<_>>().join(", ");
+                let inner = nodes
+                    .iter()
+                    .map(|n| n.to_string_debug())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("Sequence({})", inner)
             }
             Self::Alternation { nodes, .. } => {
-                let inner = nodes.iter().map(|n| n.to_string_debug()).collect::<Vec<_>>().join("|");
+                let inner = nodes
+                    .iter()
+                    .map(|n| n.to_string_debug())
+                    .collect::<Vec<_>>()
+                    .join("|");
                 format!("Alternation({})", inner)
             }
             Self::Repetition { nodes, .. } => {
-                let inner = nodes.iter().map(|n| n.to_string_debug()).collect::<Vec<_>>().join(", ");
+                let inner = nodes
+                    .iter()
+                    .map(|n| n.to_string_debug())
+                    .collect::<Vec<_>>()
+                    .join(", ");
                 format!("Repetition({})", inner)
             }
             Self::Rule { name, node, .. } => {
@@ -140,7 +140,10 @@ mod tests {
     #[test]
     fn test_ast_node_terminal() {
         let span = Span::new(0, 5);
-        let node = AstNode::Terminal { value: "hello".to_string(), span };
+        let node = AstNode::Terminal {
+            value: "hello".to_string(),
+            span,
+        };
         assert_eq!(node.span(), span);
     }
 

@@ -1,9 +1,11 @@
-use medley::ebnf::{grammar, {ParseEvent, TokenKind, Parser}};
+use medley::ebnf::{
+    grammar, {ParseEvent, Parser, TokenKind},
+};
 
 #[test]
 fn parses_simple_sequence() {
     let g = grammar! {
-        start = "a" "b";
+        start ::= "a" "b";
     };
 
     let mut parser = Parser::from_str(&g, "ab");
@@ -13,22 +15,34 @@ fn parses_simple_sequence() {
     }
 
     assert_eq!(events.len(), 4);
-    match &events[0] { ParseEvent::Start { rule } => assert_eq!(*rule, "start"), _ => panic!("expected Start") }
+    match &events[0] {
+        ParseEvent::Start { rule } => assert_eq!(*rule, "start"),
+        _ => panic!("expected Start"),
+    }
     match &events[1] {
-        ParseEvent::Token { kind: TokenKind::Str(s), .. } => assert_eq!(*s, "a"),
+        ParseEvent::Token {
+            kind: TokenKind::Str(s),
+            ..
+        } => assert_eq!(*s, "a"),
         _ => panic!("expected first token"),
     }
     match &events[2] {
-        ParseEvent::Token { kind: TokenKind::Str(s), .. } => assert_eq!(*s, "b"),
+        ParseEvent::Token {
+            kind: TokenKind::Str(s),
+            ..
+        } => assert_eq!(*s, "b"),
         _ => panic!("expected second token"),
     }
-    match &events[3] { ParseEvent::End { rule } => assert_eq!(*rule, "start"), _ => panic!("expected End") }
+    match &events[3] {
+        ParseEvent::End { rule } => assert_eq!(*rule, "start"),
+        _ => panic!("expected End"),
+    }
 }
 
 #[test]
 fn handles_alternation() {
     let g = grammar! {
-        start = "x" | "y";
+        start ::= "x" | "y";
     };
 
     let mut parser = Parser::from_str(&g, "y");
@@ -45,7 +59,7 @@ fn handles_alternation() {
 #[test]
 fn repeat_enforces_minimum() {
     let g = grammar! {
-        start = "a"+;
+        start ::= "a" { "a" };
     };
 
     // Missing required 'a'
@@ -72,7 +86,7 @@ fn repeat_enforces_minimum() {
 #[test]
 fn reports_error_context() {
     let g = grammar! {
-        start = "hello";
+        start ::= "hello";
     };
 
     let mut parser = Parser::from_str(&g, "bye");
@@ -89,4 +103,3 @@ fn reports_error_context() {
     assert!(err.message.contains("failed to match"));
     assert_eq!(err.rule_context.as_deref(), Some("start"));
 }
-

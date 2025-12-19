@@ -4,7 +4,7 @@
 use std::collections::VecDeque;
 use std::io::{BufRead, Cursor};
 
-use super::{Span, CharClass, Grammar, Prod, RepeatQuant, TerminalKind};
+use super::{CharClass, Grammar, Prod, RepeatQuant, Span, TerminalKind};
 
 /// Parse event emitted by the pull parser.
 #[derive(Debug, Clone, PartialEq)]
@@ -39,11 +39,26 @@ pub struct ParseError {
 
 impl ParseError {
     pub fn new(message: impl Into<String>, position: usize) -> Self {
-        Self { message: message.into(), position, span: None, rule_context: None, hint: None }
+        Self {
+            message: message.into(),
+            position,
+            span: None,
+            rule_context: None,
+            hint: None,
+        }
     }
-    pub fn with_span(mut self, span: Span) -> Self { self.span = Some(span); self }
-    pub fn with_rule_context(mut self, rule: impl Into<String>) -> Self { self.rule_context = Some(rule.into()); self }
-    pub fn with_hint(mut self, hint: impl Into<String>) -> Self { self.hint = Some(hint.into()); self }
+    pub fn with_span(mut self, span: Span) -> Self {
+        self.span = Some(span);
+        self
+    }
+    pub fn with_rule_context(mut self, rule: impl Into<String>) -> Self {
+        self.rule_context = Some(rule.into());
+        self
+    }
+    pub fn with_hint(mut self, hint: impl Into<String>) -> Self {
+        self.hint = Some(hint.into());
+        self
+    }
 }
 
 /// Tracks line and column numbers during parsing (internal only)
@@ -57,18 +72,27 @@ impl LineColumnTracker {
     fn new(input: &str) -> Self {
         let mut positions = vec![0];
         for (i, ch) in input.char_indices() {
-            if ch == '\n' { positions.push(i + 1); }
+            if ch == '\n' {
+                positions.push(i + 1);
+            }
         }
-        Self { positions, input_len: input.len() }
+        Self {
+            positions,
+            input_len: input.len(),
+        }
     }
     fn line_column(&self, position: usize) -> (u32, u32) {
         // Binary search for the line containing this position
         let line = match self.positions.binary_search(&position) {
-            Ok(idx) => idx + 1,  // Exact match at line start
-            Err(idx) => idx,     // Position falls between line starts
+            Ok(idx) => idx + 1, // Exact match at line start
+            Err(idx) => idx,    // Position falls between line starts
         };
         let actual_line = if line == 0 { 1 } else { line as u32 };
-        let line_start = if line == 0 { 0 } else { self.positions[line - 1] };
+        let line_start = if line == 0 {
+            0
+        } else {
+            self.positions[line - 1]
+        };
         let column = (position - line_start) as u32 + 1;
         (actual_line, column)
     }
@@ -80,7 +104,9 @@ impl LineColumnTracker {
         let base = self.input_len;
         self.input_len += chunk.len();
         for (i, ch) in chunk.char_indices() {
-            if ch == '\n' { self.positions.push(base + i + 1); }
+            if ch == '\n' {
+                self.positions.push(base + i + 1);
+            }
         }
     }
 }
@@ -88,13 +114,37 @@ impl LineColumnTracker {
 /// Internal parse frame representing progress within a production.
 #[derive(Clone, Debug)]
 enum Frame<'a> {
-    Seq { items: &'a [Prod], idx: usize },
-    Alt { alts: &'a [Prod], idx: usize, backtrack_pos: usize, event_count_at_start: usize },
-    Group { inner: &'a Prod },
-    Repeat { item: &'a Prod, quant: &'a RepeatQuant, count: usize, backtrack_pos: usize, trying: bool },
-    Terminal { kind: &'a TerminalKind },
-    Class { class: &'a CharClass },
-    Ref { name: &'a str, prod: &'a Prod, stage: RefStage },
+    Seq {
+        items: &'a [Prod],
+        idx: usize,
+    },
+    Alt {
+        alts: &'a [Prod],
+        idx: usize,
+        backtrack_pos: usize,
+        event_count_at_start: usize,
+    },
+    Group {
+        inner: &'a Prod,
+    },
+    Repeat {
+        item: &'a Prod,
+        quant: &'a RepeatQuant,
+        count: usize,
+        backtrack_pos: usize,
+        trying: bool,
+    },
+    Terminal {
+        kind: &'a TerminalKind,
+    },
+    Class {
+        class: &'a CharClass,
+    },
+    Ref {
+        name: &'a str,
+        prod: &'a Prod,
+        stage: RefStage,
+    },
 }
 
 #[derive(Clone, Debug, PartialEq, Eq)]
@@ -117,7 +167,7 @@ pub struct Parser<'a, R: BufRead> {
     events: VecDeque<ParseEvent<'a>>,
     line_tracker: LineColumnTracker,
     finished: bool,
-    branch_failed: bool,  // Track if a branch failed (different from finished for Alt handling)
+    branch_failed: bool, // Track if a branch failed (different from finished for Alt handling)
     reader: Option<R>,
     eof: bool,
 }
@@ -150,7 +200,10 @@ impl<'a, R: BufRead> Parser<'a, R> {
             });
         } else {
             parser.finished = true;
-            parser.events.push_back(ParseEvent::Error(ParseError::new("grammar has no rules", 0)));
+            parser.events.push_back(ParseEvent::Error(ParseError::new(
+                "grammar has no rules",
+                0,
+            )));
         }
 
         parser
@@ -165,7 +218,6 @@ impl<'a> Parser<'a, Cursor<&'a [u8]>> {
 }
 
 impl<'a, R: BufRead> Parser<'a, R> {
-
     /// Advance and return the next parse event, or `None` when finished.
     pub fn next_event(&mut self) -> Option<ParseEvent<'a>> {
         if let Some(ev) = self.events.pop_front() {
@@ -188,7 +240,7 @@ impl<'a, R: BufRead> Parser<'a, R> {
         self.events.pop_front()
     }
 
-            fn step(&mut self) -> Option<ParseEvent<'a>> {
+    fn step(&mut self) -> Option<ParseEvent<'a>> {
         let frame = match self.frames.pop() {
             Some(f) => f,
             None => {
@@ -201,13 +253,21 @@ impl<'a, R: BufRead> Parser<'a, R> {
             Frame::Ref { name, prod, stage } => match stage {
                 RefStage::Start => {
                     self.events.push_back(ParseEvent::Start { rule: name });
-                    self.frames.push(Frame::Ref { name, prod, stage: RefStage::Parsing });
+                    self.frames.push(Frame::Ref {
+                        name,
+                        prod,
+                        stage: RefStage::Parsing,
+                    });
                     self.frames.push(Frame::from_prod(prod, self.grammar));
                     None
                 }
                 RefStage::Parsing => {
                     // Child finished successfully
-                    self.frames.push(Frame::Ref { name, prod, stage: RefStage::End });
+                    self.frames.push(Frame::Ref {
+                        name,
+                        prod,
+                        stage: RefStage::End,
+                    });
                     None
                 }
                 RefStage::End => {
@@ -218,21 +278,30 @@ impl<'a, R: BufRead> Parser<'a, R> {
 
             Frame::Seq { items, idx } => {
                 if idx < items.len() {
-                    self.frames.push(Frame::Seq { items, idx: idx + 1 });
-                    self.frames.push(Frame::from_prod(&items[idx], self.grammar));
+                    self.frames.push(Frame::Seq {
+                        items,
+                        idx: idx + 1,
+                    });
+                    self.frames
+                        .push(Frame::from_prod(&items[idx], self.grammar));
                 }
                 None
             }
 
-            Frame::Alt { alts, idx, backtrack_pos, event_count_at_start } => {
+            Frame::Alt {
+                alts,
+                idx,
+                backtrack_pos,
+                event_count_at_start,
+            } => {
                 if idx == 0 {
                     // First time seeing this Alt frame - save position and event count, try first branch
                     let current_pos = self.pos;
                     let current_event_count = self.events.len();
-                    self.branch_failed = false;  // Reset flag for new branch attempt
-                    self.frames.push(Frame::Alt { 
-                        alts, 
-                        idx: 1, 
+                    self.branch_failed = false; // Reset flag for new branch attempt
+                    self.frames.push(Frame::Alt {
+                        alts,
+                        idx: 1,
                         backtrack_pos: current_pos,
                         event_count_at_start: current_event_count,
                     });
@@ -240,8 +309,8 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 } else if idx > 0 {
                     // Check if previous branch succeeded
                     let branch_succeeded = !self.branch_failed;
-                    self.branch_failed = false;  // Reset flag for next iteration
-                    
+                    self.branch_failed = false; // Reset flag for next iteration
+
                     if branch_succeeded {
                         // Previous branch succeeded - we're done
                         // Just pop this frame (don't push anything new)
@@ -249,10 +318,10 @@ impl<'a, R: BufRead> Parser<'a, R> {
                         // Previous branch failed, try next one
                         self.pos = backtrack_pos;
                         self.events.truncate(event_count_at_start);
-                        
-                        self.frames.push(Frame::Alt { 
-                            alts, 
-                            idx: idx + 1, 
+
+                        self.frames.push(Frame::Alt {
+                            alts,
+                            idx: idx + 1,
                             backtrack_pos,
                             event_count_at_start,
                         });
@@ -263,10 +332,15 @@ impl<'a, R: BufRead> Parser<'a, R> {
                         self.branch_failed = true;
                         self.pos = backtrack_pos;
                         self.events.truncate(event_count_at_start);
-                        
+
                         // Check if there's a parent frame that can handle this failure gracefully
                         // If this is a top-level Alt (no Seq/Repeat/etc parent), then fail
-                        let has_parent_handler = self.frames.iter().any(|f| matches!(f, Frame::Seq { .. } | Frame::Repeat { .. } | Frame::Ref { .. }));
+                        let has_parent_handler = self.frames.iter().any(|f| {
+                            matches!(
+                                f,
+                                Frame::Seq { .. } | Frame::Repeat { .. } | Frame::Ref { .. }
+                            )
+                        });
                         if !has_parent_handler {
                             self.fail("no alternative matched");
                         }
@@ -280,7 +354,13 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 None
             }
 
-            Frame::Repeat { item, quant, count, backtrack_pos, trying } => {
+            Frame::Repeat {
+                item,
+                quant,
+                count,
+                backtrack_pos,
+                trying,
+            } => {
                 if trying {
                     if let Some(max) = quant.max {
                         if count >= max {
@@ -291,13 +371,25 @@ impl<'a, R: BufRead> Parser<'a, R> {
                             return None;
                         }
                     }
-                    self.frames.push(Frame::Repeat { item, quant, count, backtrack_pos: self.pos, trying: false });
+                    self.frames.push(Frame::Repeat {
+                        item,
+                        quant,
+                        count,
+                        backtrack_pos: self.pos,
+                        trying: false,
+                    });
                     self.frames.push(Frame::from_prod(item, self.grammar));
                 } else {
                     // After attempting one repetition
                     if self.pos > backtrack_pos {
                         // Made progress; try again
-                        self.frames.push(Frame::Repeat { item, quant, count: count + 1, backtrack_pos: self.pos, trying: true });
+                        self.frames.push(Frame::Repeat {
+                            item,
+                            quant,
+                            count: count + 1,
+                            backtrack_pos: self.pos,
+                            trying: true,
+                        });
                     } else {
                         // No progress; check min bound
                         if count < quant.min {
@@ -318,7 +410,9 @@ impl<'a, R: BufRead> Parser<'a, R> {
                                 self.consume(len);
                                 self.events.push_back(ParseEvent::Token {
                                     kind: TokenKind::Char(ch),
-                                    span: self.line_tracker.span_with_position(start, self.window_start + self.pos),
+                                    span: self
+                                        .line_tracker
+                                        .span_with_position(start, self.window_start + self.pos),
                                 });
                                 true
                             } else {
@@ -335,7 +429,9 @@ impl<'a, R: BufRead> Parser<'a, R> {
                             self.consume(bytes);
                             self.events.push_back(ParseEvent::Token {
                                 kind: TokenKind::Str(expected),
-                                span: self.line_tracker.span_with_position(start, self.window_start + self.pos),
+                                span: self
+                                    .line_tracker
+                                    .span_with_position(start, self.window_start + self.pos),
                             });
                             true
                         } else {
@@ -361,7 +457,9 @@ impl<'a, R: BufRead> Parser<'a, R> {
                         self.consume(len);
                         self.events.push_back(ParseEvent::Token {
                             kind: TokenKind::Class(ch),
-                            span: self.line_tracker.span_with_position(start, self.window_start + self.pos),
+                            span: self
+                                .line_tracker
+                                .span_with_position(start, self.window_start + self.pos),
                         });
                         true
                     } else {
@@ -383,10 +481,10 @@ impl<'a, R: BufRead> Parser<'a, R> {
         if self.finished {
             return;
         }
-        
+
         // Check if there's an Alt frame that can handle this failure
         let has_alt_handler = self.frames.iter().any(|f| matches!(f, Frame::Alt { .. }));
-        
+
         if has_alt_handler {
             // Branch failed - set flag for Alt frame to detect, but don't stop parser
             self.branch_failed = true;
@@ -394,20 +492,39 @@ impl<'a, R: BufRead> Parser<'a, R> {
             // No Alt handler - this is a fatal error
             self.finished = true;
             // Find the most recent active rule from the frame stack
-            let ctx = self.frames.iter().rev().find_map(|f| match f {
-                Frame::Ref { name, stage, .. } if *stage != RefStage::End => Some(name.to_string()),
-                _ => None,
-            }).unwrap_or_else(|| self.grammar.rules.first().map(|r| r.name.clone()).unwrap_or_default());
+            let ctx = self
+                .frames
+                .iter()
+                .rev()
+                .find_map(|f| match f {
+                    Frame::Ref { name, stage, .. } if *stage != RefStage::End => {
+                        Some(name.to_string())
+                    }
+                    _ => None,
+                })
+                .unwrap_or_else(|| {
+                    self.grammar
+                        .rules
+                        .first()
+                        .map(|r| r.name.clone())
+                        .unwrap_or_default()
+                });
             let msg = msg.into();
             self.events.push_back(ParseEvent::Error(
-                ParseError::new(format!("failed to match: {}", msg), self.window_start + self.pos)
-                    .with_rule_context(ctx),
+                ParseError::new(
+                    format!("failed to match: {}", msg),
+                    self.window_start + self.pos,
+                )
+                .with_rule_context(ctx),
             ));
         }
     }
 
     fn peek_char(&self) -> Option<(char, usize)> {
-        self.input[self.pos..].chars().next().map(|ch| (ch, ch.len_utf8()))
+        self.input[self.pos..]
+            .chars()
+            .next()
+            .map(|ch| (ch, ch.len_utf8()))
     }
 
     fn consume(&mut self, bytes: usize) {
@@ -418,11 +535,13 @@ impl<'a, R: BufRead> Parser<'a, R> {
     fn ensure_buffer(&mut self, needed_bytes: usize) {
         // Slide window if buffer is large and we've consumed a significant portion
         const MAX_BUFFER_SIZE: usize = 64 * 1024; // 64KB
-        const MIN_SLIDE_SIZE: usize = 32 * 1024;  // Slide when we can reclaim 32KB
-        
+        const MIN_SLIDE_SIZE: usize = 32 * 1024; // Slide when we can reclaim 32KB
+
         if self.input.len() > MAX_BUFFER_SIZE && self.pos > MIN_SLIDE_SIZE {
             // Find minimum position we need to keep for backtracking
-            let min_pos = self.frames.iter()
+            let min_pos = self
+                .frames
+                .iter()
                 .filter_map(|f| match f {
                     Frame::Alt { backtrack_pos, .. } => Some(*backtrack_pos),
                     Frame::Repeat { backtrack_pos, .. } => Some(*backtrack_pos),
@@ -430,37 +549,49 @@ impl<'a, R: BufRead> Parser<'a, R> {
                 })
                 .min()
                 .unwrap_or(self.pos);
-            
+
             // Slide window if we can reclaim space
             if min_pos > 0 {
                 self.input.drain(..min_pos);
                 self.window_start += min_pos;
                 self.pos -= min_pos;
-                
+
                 // Adjust frame positions
                 for frame in &mut self.frames {
                     match frame {
-                        Frame::Alt { backtrack_pos, .. } => *backtrack_pos = backtrack_pos.saturating_sub(min_pos),
-                        Frame::Repeat { backtrack_pos, .. } => *backtrack_pos = backtrack_pos.saturating_sub(min_pos),
+                        Frame::Alt { backtrack_pos, .. } => {
+                            *backtrack_pos = backtrack_pos.saturating_sub(min_pos)
+                        }
+                        Frame::Repeat { backtrack_pos, .. } => {
+                            *backtrack_pos = backtrack_pos.saturating_sub(min_pos)
+                        }
                         _ => {}
                     }
                 }
             }
         }
-        
-        if self.input.len().saturating_sub(self.pos) >= needed_bytes || self.eof { return; }
+
+        if self.input.len().saturating_sub(self.pos) >= needed_bytes || self.eof {
+            return;
+        }
         if let Some(reader) = self.reader.as_mut() {
             while self.input.len().saturating_sub(self.pos) < needed_bytes {
                 match reader.fill_buf() {
                     Ok(buf) => {
-                        if buf.is_empty() { self.eof = true; break; }
+                        if buf.is_empty() {
+                            self.eof = true;
+                            break;
+                        }
                         let chunk = String::from_utf8_lossy(buf).to_string();
                         self.line_tracker.extend(&chunk);
                         self.input.push_str(&chunk);
                         let consumed = buf.len();
                         reader.consume(consumed);
                     }
-                    Err(_) => { self.eof = true; break; }
+                    Err(_) => {
+                        self.eof = true;
+                        break;
+                    }
                 }
             }
         }
@@ -486,33 +617,58 @@ impl<'a> Frame<'a> {
     fn from_prod(prod: &'a Prod, grammar: &'a Grammar) -> Frame<'a> {
         match prod {
             Prod::Seq(items) => Frame::Seq { items, idx: 0 },
-            Prod::Alt(alts) => Frame::Alt { alts, idx: 0, backtrack_pos: 0, event_count_at_start: 0 },
+            Prod::Alt(alts) => Frame::Alt {
+                alts,
+                idx: 0,
+                backtrack_pos: 0,
+                event_count_at_start: 0,
+            },
             Prod::Group(inner) => Frame::Group { inner },
-            Prod::Repeat { item, quant } => Frame::Repeat { item, quant, count: 0, backtrack_pos: 0, trying: true },
+            Prod::Repeat { item, quant } => Frame::Repeat {
+                item,
+                quant,
+                count: 0,
+                backtrack_pos: 0,
+                trying: true,
+            },
             Prod::Terminal { kind, .. } => Frame::Terminal { kind },
             Prod::Class(class) => Frame::Class { class },
             Prod::Ref { name, .. } => {
                 // Look up the rule in the grammar
-                let rule_prod = grammar.rules.iter()
+                let rule_prod = grammar
+                    .rules
+                    .iter()
                     .find(|r| r.name == *name)
                     .map(|r| &r.production)
                     .unwrap_or(prod); // Fallback to current prod if not found (will error later)
-                Frame::Ref { name: name.as_str(), prod: rule_prod, stage: RefStage::Start }
+                Frame::Ref {
+                    name: name.as_str(),
+                    prod: rule_prod,
+                    stage: RefStage::Start,
+                }
             }
         }
     }
 }
 
 /// Parse an input string using the given grammar, producing an iterator of events.
-pub fn parse_str<'a>(grammar: &'a Grammar, input: &'a str) -> impl Iterator<Item = ParseEvent<'a>> + 'a {
+pub fn parse_str<'a>(
+    grammar: &'a Grammar,
+    input: &'a str,
+) -> impl Iterator<Item = ParseEvent<'a>> + 'a {
     let reader = Cursor::new(input.as_bytes());
     let parser = Parser::new(grammar, reader);
     EventIter { parser }
 }
 
 /// Parse from any `BufRead`, returning an iterator of events.
-pub fn parse<'a, R: BufRead + 'a>(grammar: &'a Grammar, reader: R) -> impl Iterator<Item = ParseEvent<'a>> + 'a {
-    EventIter { parser: Parser::new(grammar, reader) }
+pub fn parse<'a, R: BufRead + 'a>(
+    grammar: &'a Grammar,
+    reader: R,
+) -> impl Iterator<Item = ParseEvent<'a>> + 'a {
+    EventIter {
+        parser: Parser::new(grammar, reader),
+    }
 }
 
 /// Iterator adapter over `Parser::next_event`.
@@ -526,5 +682,3 @@ impl<'a, R: BufRead> Iterator for EventIter<'a, R> {
         self.parser.next_event()
     }
 }
-
-

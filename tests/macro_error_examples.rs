@@ -7,8 +7,8 @@ use medley::ebnf::grammar;
 // #[test]
 // fn missing_semicolon() {
 //     let g = grammar! {
-//         expr = term
-//         term = digit
+//         expr ::= term
+//         term ::= digit
 //     };
 // }
 
@@ -16,7 +16,7 @@ use medley::ebnf::grammar;
 // #[test]
 // fn unexpected_punctuation() {
 //     let g = grammar! {
-//         expr = @ term;
+//         expr ::= @ term;
 //     };
 // }
 
@@ -24,7 +24,7 @@ use medley::ebnf::grammar;
 // #[test]
 // fn invalid_char_literal() {
 //     let g = grammar! {
-//         expr = 'ab';  // Too many characters
+//         expr ::= 'ab';  // Too many characters
 //     };
 // }
 
@@ -38,17 +38,16 @@ use medley::ebnf::grammar;
 // #[test]
 // fn missing_equals() {
 //     let g = grammar! {
-//         expr term;
+//         expr ::= term;
 //     };
 // }
 
 #[test]
 fn valid_grammar_compiles() {
     let g = grammar! {
-        expr = term;
-        term = digit;
-        digit = [0-9];
+        expr ::= term;
+        term ::= digit;
+        digit ::= '0'..'9';
     };
     assert_eq!(g.rules.len(), 3);
 }
-

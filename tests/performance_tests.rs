@@ -1,4 +1,4 @@
-use medley::ebnf::{grammar, parse, ParseEvent};
+use medley::ebnf::{ParseEvent, grammar, parse};
 use std::io::BufRead;
 
 struct ChunkedBuf<'a> {
@@ -33,10 +33,15 @@ impl<'a> std::io::Read for ChunkedBuf<'a> {
 #[test]
 fn large_stream_bounded_chunking() {
     let grammar = grammar! {
-        start = [0123456789]+;
+        start ::= digit { digit };
+        digit ::= '0'..'9';
     };
     let data = "1".repeat(2 * 1024 * 1024); // 2MB
-    let reader = ChunkedBuf { data: data.as_bytes(), pos: 0, chunk: 128 };
+    let reader = ChunkedBuf {
+        data: data.as_bytes(),
+        pos: 0,
+        chunk: 128,
+    };
 
     let token_count = parse(&grammar, reader)
         .filter(|e| matches!(e, ParseEvent::Token { .. }))

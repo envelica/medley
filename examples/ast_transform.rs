@@ -1,6 +1,6 @@
 // Example demonstrating the mutable Visitor pattern for AST transformation
 use medley::ast::{VisitorMut, parse_str};
-use medley::ebnf::{grammar, Span};
+use medley::ebnf::{Span, grammar};
 
 // Example: Transform all terminal values to uppercase
 struct Uppercaser;
@@ -17,7 +17,12 @@ struct RulePrefixer {
 }
 
 impl VisitorMut for RulePrefixer {
-    fn visit_rule_mut(&mut self, name: &mut String, node: &mut medley::ast::AstNode, _span: &mut Span) {
+    fn visit_rule_mut(
+        &mut self,
+        name: &mut String,
+        node: &mut medley::ast::AstNode,
+        _span: &mut Span,
+    ) {
         *name = format!("{}{}", self.prefix, name);
         // Continue into the node
         self.visit_node_mut(node);
@@ -26,7 +31,7 @@ impl VisitorMut for RulePrefixer {
 
 fn main() {
     let grammar = grammar! {
-        start = "hello" " " "world";
+        start ::= "hello" " " "world";
     };
 
     let input = "hello world";

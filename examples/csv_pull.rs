@@ -1,4 +1,4 @@
-use medley::ebnf::{grammar, parse, Grammar, ParseEvent, TokenKind};
+use medley::ebnf::{Grammar, ParseEvent, TokenKind, grammar, parse};
 use std::io::Cursor;
 
 fn stream_csv_line(grammar: &Grammar, line: &str) {
@@ -12,7 +12,7 @@ fn stream_csv_line(grammar: &Grammar, line: &str) {
                     TokenKind::Char(c) | TokenKind::Class(c) => c,
                     TokenKind::Str(s) => s.chars().next().unwrap_or(','),
                 };
-                
+
                 // Skip comma delimiters
                 if ch != ',' {
                     field_buf.push(ch);
@@ -36,9 +36,9 @@ fn stream_csv_line(grammar: &Grammar, line: &str) {
 
 fn main() {
     let grammar = grammar! {
-        record = field (',' field)*;
-        field = word+;
-        word = [a-z] | [A-Z] | [0-9];
+        record ::= field { ',' field };
+        field ::= word { word };
+        word ::= 'a'..'z' | 'A'..'Z' | '0'..'9';
     };
 
     let data = "alpha,beta,gamma\n1,2,3\nx,y,z\n";

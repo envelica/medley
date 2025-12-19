@@ -40,34 +40,35 @@ A zero-copy, streaming EBNF parser with a compile-time `grammar!` macro. Perfect
 - Compile-time grammar validation
 - Precise error reporting with spans
 
-### Grammar Syntax
+### Grammar Syntax (W3C-style EBNF)
 
-The `grammar!` macro accepts EBNF-like syntax:
+The `grammar!` macro uses W3C-style EBNF constructs:
 
 ```rust
 grammar! {
     // Sequences: match items in order
     greeting = "hello" " " name;
-    
-    // Alternation: match one of several options
-    digit = [0-9];
-    vowel = 'a' | 'e' | 'i' | 'o' | 'u';
-    
-    // Repetition: zero or more matches
-    word = letter+;
-    optional_sign = [+-]?;
-    
-    // Character classes: match any character in range
-    letter = [a-z] | [A-Z];
-    alphanumeric = [a-zA-Z0-9];
-    
-    // Negated classes: match any character NOT in range
-    non_digit = [^0-9];
-    
-    // Rule references: reuse named rules
-    sentence = word (' ' word)*;
-}
 
+    // Alternation: match one of several options
+    vowel = 'a' | 'e' | 'i' | 'o' | 'u';
+
+    // Optional: [ ... ]
+    excited = "hello" [ "!" ];
+
+    // Repetition (zero or more): { ... }
+    spaces = { ' ' };
+
+    // Ranges: 'a'..'z' (inclusive)
+    letter = 'a'..'z' | 'A'..'Z';
+    digit  = '0'..'9';
+
+    // One-or-more: combine item + repetition
+    word = letter { letter };
+
+    // Grouping with parentheses
+    sentence = word { ' ' word };
+}
+```
 ## Usage
 
 Add medley to your `Cargo.toml`:
@@ -75,6 +76,13 @@ Add medley to your `Cargo.toml`:
 ```toml
 [dependencies]
 medley = "0.1"  # Use the latest stable version when released
+```
+
+To opt out of EBNF and its macros (feature-gated):
+
+```toml
+[dependencies]
+medley = { version = "0.1", default-features = false }
 ```
 
 ### Quick Start: Pull Parser
@@ -86,8 +94,9 @@ use medley::ebnf::{grammar, parse, ParseEvent};
 use std::io::Cursor;
 
 let grammar = grammar! {
-    record = field (',' field)*;
-    field = [a-z]+;
+    record = field { ',' field };
+    letter = 'a'..'z';
+    field = letter { letter };
 };
 
 for event in parse(&grammar, Cursor::new(b"alpha,beta,gamma")) {
@@ -110,8 +119,9 @@ use medley::ebnf::grammar;
 use medley::ast::parse_str;
 
 let grammar = grammar! {
-    expr = term (op term)*;
-    term = [0-9]+;
+    expr = term { op term };
+    term = digit { digit };
+    digit = '0'..'9';
     op = '+' | '-';
 };
 
@@ -158,8 +168,8 @@ cargo run --example expr_pull
 // Parses "12+30" and computes the result
 let grammar = grammar! {
     expr = num op num;
-    num = digit digit?;
-    digit = [0-9];
+    num = digit [ digit ];
+    digit = '0'..'9';
     op = [+-];
 };
 // Output: 12+30 = 42
@@ -175,9 +185,9 @@ cargo run --example csv_pull
 ```rust
 // Parses CSV records field-by-field
 let grammar = grammar! {
-    record = field (',' field)*;
-    field = word+;
-    word = [a-z] | [A-Z] | [0-9];
+    record = field { ',' field };
+    field = word { word };
+    word = 'a'..'z' | 'A'..'Z' | '0'..'9';
 };
 // Output: record: ["alpha", "beta", "gamma"]
 ```
@@ -210,4 +220,14 @@ cargo run --example parse_small
 
 # Large stream benchmark (1MB, chunked reading)
 cargo run --example parse_stream --release
+```
+
+### W3C EBNF Grammar (Example)
+
+The `examples/w3c_ebnf.rs` file contains a grammar for a common EBNF dialect
+expressible with `grammar!`. It demonstrates sequences, alternations, grouping,
+quantifiers (`+ * ?`), terminals, and character classes. Run it with:
+
+```bash
+cargo run --example w3c_ebnf
 ```

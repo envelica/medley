@@ -76,91 +76,76 @@ impl Parser {
     }
     
     fn parse_rule(&mut self) -> Result<RuleAst> {
-        // name = production ;
-        let name_token = self.next().ok_or_else(|| ParseError {
-            message: "expected rule name".into(),
-            span: Span::call_site(),
-        })?;
-        
-        let name = match name_token {
-            TokenTree::Ident(ident) => ident.to_string(),
-            _ => return Err(ParseError {
-                message: "expected identifier for rule name".into(),
-                span: span_of(&name_token),
-            }),
+        // Expect rule name
+        let name = match self.next() {
+            Some(TokenTree::Ident(ident)) => ident.to_string(),
+            Some(other) => {
+                return Err(ParseError { message: "expected rule name".into(), span: span_of(&other) })
+            }
+            None => {
+                return Err(ParseError { message: "unexpected end of input while parsing rule".into(), span: Span::call_site() })
+            }
         };
-        
-        self.expect_punct('=')?;
+
+        // Expect '::='
+        self.expect_assign()?;
+
+        // Parse production
         let production = self.parse_production()?;
+
+        // Expect ';'
         self.expect_punct(';')?;
-        
+
         Ok(RuleAst { name, production })
     }
-    
+
     fn parse_production(&mut self) -> Result<ProdAst> {
-        let mut alternatives = vec![self.parse_sequence()?];
-        
-        while matches!(self.peek(), Some(TokenTree::Punct(p)) if p.as_char() == '|') {
-            self.next(); // consume |
-            alternatives.push(self.parse_sequence()?);
+        let mut alts: Vec<ProdAst> = Vec::new();
+        let mut seq: Vec<ProdAst> = Vec::new();
+
+        while let Some(tt) = self.peek().cloned() {
+            match &tt {
+                TokenTree::Punct(p) if p.as_char() == '|' => {
+                    // consume '|'
+                    self.next();
+                    // push current sequence (possibly empty)
+                    let node = if seq.len() == 0 {
+                        ProdAst::Seq(vec![])
+                    } else if seq.len() == 1 {
+                        seq.remove(0)
+                    } else {
+                        ProdAst::Seq(seq.drain(..).collect())
+                    };
+                    alts.push(node);
+                }
+                TokenTree::Punct(p) if p.as_char() == ';' => {
+                    break;
+                }
+                _ => {
+                    let atom = self.parse_atom()?;
+                    seq.push(atom);
+                }
+            }
         }
-        
-        if alternatives.len() == 1 {
-            Ok(alternatives.into_iter().next().unwrap())
+
+        // push the final sequence
+        let last = if seq.len() == 0 {
+            ProdAst::Seq(vec![])
+        } else if seq.len() == 1 {
+            seq.remove(0)
         } else {
-            Ok(ProdAst::Alt(alternatives))
+            ProdAst::Seq(seq)
+        };
+        alts.push(last);
+
+        if alts.len() == 1 {
+            Ok(alts.remove(0))
+        } else {
+            Ok(ProdAst::Alt(alts))
         }
     }
     
-    fn parse_sequence(&mut self) -> Result<ProdAst> {
-        let mut items = Vec::new();
-        
-        loop {
-            match self.peek() {
-                Some(TokenTree::Punct(p)) if p.as_char() == ';' || p.as_char() == '|' || p.as_char() == ')' => break,
-                None => break,
-                _ => items.push(self.parse_item()?),
-            }
-        }
-        
-        if items.is_empty() {
-            return Err(ParseError {
-                message: "expected at least one item in sequence".into(),
-                span: Span::call_site(),
-            });
-        }
-        
-        if items.len() == 1 {
-            Ok(items.into_iter().next().unwrap())
-        } else {
-            Ok(ProdAst::Seq(items))
-        }
-    }
-    
-    fn parse_item(&mut self) -> Result<ProdAst> {
-        let mut item = self.parse_atom()?;
-        
-        // Check for repetition
-        if let Some(TokenTree::Punct(p)) = self.peek() {
-            let quant = match p.as_char() {
-                '*' => Some((0, None)),
-                '+' => Some((1, None)),
-                '?' => Some((0, Some(1))),
-                _ => None,
-            };
-            
-            if let Some((min, max)) = quant {
-                self.next(); // consume repetition operator
-                item = ProdAst::Repeat {
-                    item: Box::new(item),
-                    min,
-                    max,
-                };
-            }
-        }
-        
-        Ok(item)
-    }
+    // Legacy helper for legacy character class syntax has been removed.
     
     fn parse_atom(&mut self) -> Result<ProdAst> {
         let token = self.next().ok_or_else(|| ParseError {
@@ -179,7 +164,25 @@ impl Parser {
                     // Char literal
                     let content = lit_str[1..lit_str.len() - 1].to_string();
                     if content.len() == 1 {
-                        Ok(ProdAst::CharLit(content.chars().next().unwrap()))
+                        // Support ranges: 'a'..'z'
+                        let start_ch = content.chars().next().unwrap();
+                        // Lookahead for '..' and a trailing char literal
+                        let mut it = self.tokens.clone();
+                        if let (Some(TokenTree::Punct(p1)), Some(TokenTree::Punct(p2)), Some(TokenTree::Literal(end_lit))) = (it.next(), it.next(), it.next()) {
+                            if p1.as_char() == '.' && p2.as_char() == '.' {
+                                let end_str = end_lit.to_string();
+                                if end_str.starts_with('\'') && end_str.ends_with('\'') {
+                                    let end_content = end_str[1..end_str.len()-1].to_string();
+                                    if end_content.len() == 1 {
+                                        // consume the two dots and the end literal from the main stream
+                                        self.next(); self.next(); self.next();
+                                        let end_ch = end_content.chars().next().unwrap();
+                                        return Ok(ProdAst::CharClass { negated: false, chars: vec![], ranges: vec![(start_ch, end_ch)] });
+                                    }
+                                }
+                            }
+                        }
+                        Ok(ProdAst::CharLit(start_ch))
                     } else {
                         Err(ParseError {
                             message: "character literal must contain exactly one character".into(),
@@ -199,14 +202,22 @@ impl Parser {
             TokenTree::Group(group) => {
                 match group.delimiter() {
                     Delimiter::Parenthesis => {
-                        // Grouping
+                        // Grouping: ( ... )
                         let mut inner_parser = Parser::new(group.stream());
                         let prod = inner_parser.parse_production()?;
                         Ok(ProdAst::Group(Box::new(prod)))
                     }
                     Delimiter::Bracket => {
-                        // Character class
-                        parse_char_class(group.stream())
+                        // Optional: [ ... ]  =>  Repeat(min=0, max=Some(1))
+                        let mut inner_parser = Parser::new(group.stream());
+                        let prod = inner_parser.parse_production()?;
+                        Ok(ProdAst::Repeat { item: Box::new(prod), min: 0, max: Some(1) })
+                    }
+                    Delimiter::Brace => {
+                        // Repetition: { ... } => Repeat(min=0, max=None)
+                        let mut inner_parser = Parser::new(group.stream());
+                        let prod = inner_parser.parse_production()?;
+                        Ok(ProdAst::Repeat { item: Box::new(prod), min: 0, max: None })
                     }
                     _ => Err(ParseError {
                         message: "unexpected delimiter".into(),
@@ -235,8 +246,29 @@ impl Parser {
             }),
         }
     }
+
+    /// Expect W3C EBNF assignment '::='
+    fn expect_assign(&mut self) -> Result<()> {
+        // Expect ':' ':' '=' in sequence
+        match self.next() {
+            Some(TokenTree::Punct(p)) if p.as_char() == ':' => {}
+            Some(other) => return Err(ParseError { message: "expected '::=' (first ':')".into(), span: span_of(&other) }),
+            None => return Err(ParseError { message: "expected '::=' but input ended".into(), span: Span::call_site() }),
+        }
+        match self.next() {
+            Some(TokenTree::Punct(p)) if p.as_char() == ':' => {}
+            Some(other) => return Err(ParseError { message: "expected '::=' (second ':')".into(), span: span_of(&other) }),
+            None => return Err(ParseError { message: "expected '::=' but input ended".into(), span: Span::call_site() }),
+        }
+        match self.next() {
+            Some(TokenTree::Punct(p)) if p.as_char() == '=' => Ok(()),
+            Some(other) => Err(ParseError { message: "expected '::=' (final '=')".into(), span: span_of(&other) }),
+            None => Err(ParseError { message: "expected '::=' but input ended".into(), span: Span::call_site() }),
+        }
+    }
 }
 
+/*
 fn parse_char_class(stream: TokenStream) -> Result<ProdAst> {
     let tokens: Vec<TokenTree> = stream.into_iter().collect();
     
@@ -346,6 +378,7 @@ fn parse_char_class(stream: TokenStream) -> Result<ProdAst> {
     
     Ok(ProdAst::CharClass { negated, chars, ranges })
 }
+*/
 
 fn span_of(token: &TokenTree) -> Span {
     match token {

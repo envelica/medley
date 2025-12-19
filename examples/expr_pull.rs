@@ -1,4 +1,4 @@
-use medley::ebnf::{grammar, Grammar, ParseEvent, Parser, TokenKind};
+use medley::ebnf::{Grammar, ParseEvent, Parser, TokenKind, grammar};
 
 fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
     let mut num_buf = String::new();
@@ -23,7 +23,9 @@ fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
             ParseEvent::End { rule } if rule == "num" => {
                 // Number ended - convert accumulated digits
                 if !num_buf.is_empty() {
-                    let num: i64 = num_buf.parse().map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
+                    let num: i64 = num_buf
+                        .parse()
+                        .map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
                     nums.push(num);
                     num_buf.clear();
                 }
@@ -31,7 +33,9 @@ fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
             ParseEvent::Error(_) => {
                 // Flush any remaining number
                 if !num_buf.is_empty() {
-                    let num: i64 = num_buf.parse().map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
+                    let num: i64 = num_buf
+                        .parse()
+                        .map_err(|e| format!("invalid number '{num_buf}': {e}"))?;
                     nums.push(num);
                     num_buf.clear();
                 }
@@ -62,10 +66,10 @@ fn eval_expr(grammar: &Grammar, input: &str) -> Result<i64, String> {
 
 fn main() {
     let grammar = grammar! {
-        expr = num op num;
-        num = digit digit?;
-        digit = [0-9];
-        op = [+-];
+        expr ::= num op num;
+        num ::= digit [ digit ];
+        digit ::= '0'..'9';
+        op ::= '+' | '-';
     };
 
     let input = "12+30";
