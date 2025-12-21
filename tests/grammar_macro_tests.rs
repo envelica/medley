@@ -36,3 +36,16 @@ fn test_char_and_string_literals() {
 
     assert_eq!(g.rules.len(), 2);
 }
+
+#[test]
+fn test_numeric_character_references() {
+    let g = grammar! {
+        tab      ::= #x9;
+        newline  ::= #10;
+        capital_a ::= #X41;
+    };
+
+    assert_eq!(g.rules.len(), 3);
+    let errors = g.validate();
+    assert!(errors.is_empty(), "validation errors: {:?}", errors);
+}

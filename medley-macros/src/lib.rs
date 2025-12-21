@@ -226,11 +226,69 @@ impl Parser {
                 }
             }
             
-            TokenTree::Punct(p) => Err(ParseError {
-                message: format!("unexpected punctuation '{}'", p.as_char()),
-                span: p.span(),
-            }),
+            TokenTree::Punct(p) => {
+                if p.as_char() == '#' {
+                    return self.parse_numeric_char_ref(p.span());
+                }
+
+                Err(ParseError {
+                    message: format!("unexpected punctuation '{}'", p.as_char()),
+                    span: p.span(),
+                })
+            }
         }
+    }
+
+    fn parse_numeric_char_ref(&mut self, hash_span: Span) -> Result<ProdAst> {
+        let next = self.next().ok_or(ParseError {
+            message: "expected numeric character reference after '#'".into(),
+            span: hash_span,
+        })?;
+
+        let (value, span) = match next {
+            TokenTree::Ident(ident) => {
+                let s = ident.to_string();
+                let (radix, digits) = if let Some(rest) = s.strip_prefix('x').or_else(|| s.strip_prefix('X')) {
+                    (16, rest)
+                } else {
+                    (10, s.as_str())
+                };
+                let val = u32::from_str_radix(digits, radix).map_err(|_| ParseError {
+                    message: "invalid numeric character reference".into(),
+                    span: ident.span(),
+                })?;
+                (val, ident.span())
+            }
+            TokenTree::Literal(lit) => {
+                let raw = lit.to_string();
+                let s = raw.trim_matches('"');
+
+                let (radix, digits) = if let Some(rest) = s.strip_prefix('x').or_else(|| s.strip_prefix('X')) {
+                    (16, rest)
+                } else {
+                    (10, s)
+                };
+
+                let val = u32::from_str_radix(digits, radix).map_err(|_| ParseError {
+                    message: "invalid numeric character reference".into(),
+                    span: lit.span(),
+                })?;
+                (val, lit.span())
+            }
+            other => {
+                return Err(ParseError {
+                    message: "expected numeric literal after '#'".into(),
+                    span: span_of(&other),
+                })
+            }
+        };
+
+        let ch = std::char::from_u32(value).ok_or(ParseError {
+            message: "numeric character reference not a valid Unicode scalar value".into(),
+            span,
+        })?;
+
+        Ok(ProdAst::CharLit(ch))
     }
     
     fn expect_punct(&mut self, expected: char) -> Result<()> {

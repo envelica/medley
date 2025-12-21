@@ -68,6 +68,10 @@ grammar! {
     letter   ::= 'a'..'z' | 'A'..'Z';
     digit    ::= '0'..'9';
 
+    // Numeric character references: hex (#x..) or decimal (#..)
+    tab      ::= #x9;
+    newline  ::= #10;
+
     // One-or-more: combine item + repetition
     word     ::= letter { letter };
 
